@@ -5,7 +5,7 @@ const raw=window.POKEDEX_CONFIG||{};
 if(typeof raw.title==='string'&&raw.title.trim())document.title=raw.title.slice(0,60);
 const config={supabaseUrl:String(raw.supabaseUrl||'').replace(/\/$/,''),publishableKey:String(raw.publishableKey||''),collection:String(raw.collection||'principal'),refreshSeconds:Math.max(60,Math.min(600,Number(raw.refreshSeconds)||60))};
 const HOME='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/shiny/';
-const state={catalog:[],entries:[],snapshot:null,view:'collection',layout:'grid',status:'all',limit:24,hasData:false,fetching:false,lastUpdated:0,lastAttempt:0,failures:0};
+const state={catalog:[],entries:[],snapshot:null,pvpData:null,pvpMarks:{},pvpLookup:new Map(),pvpLimit:24,pvpSelected:null,view:'collection',layout:'grid',status:'all',limit:24,hasData:false,fetching:false,lastUpdated:0,lastAttempt:0,failures:0};
 let pollTimer,toastTimer,configError='';
 
 function validConfig(){
@@ -21,6 +21,64 @@ function validConfig(){
 }
 const configured=validConfig();
 const cacheKey=`shinydex:v1:${config.supabaseUrl}:${config.collection}`;
+const pvpCacheKey=`shinydex:pvp:v1:${config.supabaseUrl}:${config.collection}`;
+const LEAGUE_LABELS={great:'Superliga',ultra:'Ultraliga'};
+function pvpKey(league,target){return `${league}:${target.destination.key}`;}
+function pvpItem(league,key){return state.pvpLookup.get(`${league}:${key}`);}
+function pvpDone(league,target){return Boolean(state.pvpMarks[pvpKey(league,target)]);}
+function pvpBadge(entry){
+  if(!state.pvpData)return '';
+  const chips=[];
+  const form=entry.form_key==='normal'?'normal':entry.form_key.replace(/^form:/,'').split('|')[0];
+  for(const league of ['great','ultra']){
+    const target=pvpItem(league,`${entry.id}:${form}`);
+    if(!target)continue;
+    const done=pvpDone(league,target);
+    chips.push(`<button class="pvp-chip ${done?'pvp-chip-done':''}" data-pvp-open="${esc(league)}" data-pvp-dest="${esc(target.destination.key)}" title="${esc(LEAGUE_LABELS[league])} #${target.rank} · IV ${target.iv.join('/')}">${league==='great'?'Super':'Ultra'} · ${done?'✓ Shiny':'Pendiente'}</button>`);
+  }
+  return chips.length?`<div class="pvp-chips">${chips.join('')}</div>`:'';
+}
+function pvpMarkValid(league,target,value){
+  if(!value||typeof value!=='object'||!Array.isArray(value.iv)||value.iv.length!==3)return false;
+  if(value.iv.some((iv,i)=>iv!==target.iv[i]))return false;
+  return target.candidates.some(candidate=>candidate.key===value.candidateKey);
+}
+function loadPvpMarks(){
+  try{
+    const data=JSON.parse(localStorage.getItem(pvpCacheKey)||'{}');
+    const records=data?.version===1&&data?.records&&typeof data.records==='object'?data.records:{};
+    state.pvpMarks={};
+    for(const [key,record] of Object.entries(records)){
+      const target=state.pvpLookup.get(key);
+      if(target&&pvpMarkValid(target.league,target,record))state.pvpMarks[key]=record;
+    }
+  }catch{state.pvpMarks={};}
+}
+function savePvpMarks(){
+  try{localStorage.setItem(pvpCacheKey,JSON.stringify({version:1,collection:config.collection,records:state.pvpMarks}));return true;}
+  catch{notify('No se pudo guardar el progreso. Comprueba el almacenamiento del navegador.');return false;}
+}
+function pvpExport(){
+  const backup={version:1,collection:config.collection,exportedAt:new Date().toISOString(),records:state.pvpMarks};
+  download(JSON.stringify(backup,null,2),'application/json','shinydex-pvp-'+config.collection+'.json');
+}
+async function pvpImport(file){
+  if(!file)return;
+  if(file.size>2000000){notify('El archivo supera 2 MB.');return;}
+  try{
+    const backup=JSON.parse(await file.text());
+    if(backup.version!==1||backup.collection!==config.collection||!backup.records||typeof backup.records!=='object'||Array.isArray(backup.records))throw new Error('El archivo no corresponde a esta colección o versión.');
+    const accepted={};let rejected=0;
+    for(const [key,record] of Object.entries(backup.records)){
+      const item=state.pvpLookup.get(key);
+      if(item&&pvpMarkValid(item.league,item,record))accepted[key]=record;else rejected++;
+    }
+    const count=Object.keys(accepted).length;
+    if(!confirm(`Importar ${count} objetivos válidos (${rejected} descartados)? Se mantendrán los objetivos locales que no estén en el archivo.`))return;
+    state.pvpMarks={...state.pvpMarks,...accepted};if(savePvpMarks()){render();notify(`Importados ${count} objetivos PvP.`);}
+  }catch(error){notify('No se pudo importar el progreso: '+error.message);}
+}
+
 
 function notify(text){$('toast').textContent=text;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,3500);}
 function notice(text,button=false){$('statusNotice').hidden=!text;$('statusNotice').replaceChildren();if(!text)return;const span=document.createElement('span');span.textContent=text;$('statusNotice').append(span);if(button){const b=document.createElement('button');b.textContent='Configuración';b.addEventListener('click',()=>openDialog('infoDialog'));$('statusNotice').append(b);}}
@@ -47,10 +105,10 @@ function card(entry){
   const progress=entry.completed.size;
   // Orden visual: los tres IV 100 y cinco IV 0, sin crear una novena categoría.
   const goals=GOALS.map(g=>`<div class="goal-cell ${g.group==='0'?'group-zero ':''}${entry.completed.has(g.id)?'done':''}" title="${esc(g.label)}: ${state.hasData?(entry.completed.has(g.id)?'conseguido':'pendiente'):'sin sincronizar'}"><span class="goal-circle" aria-hidden="true">${entry.completed.has(g.id)?'✓':''}</span><span>${g.short}</span><span class="sr-only">${state.hasData?(entry.completed.has(g.id)?'conseguido':'pendiente'):'sin sincronizar'}</span>${g.group==='100'?'<span class="tiny-star" aria-hidden="true">✦</span>':''}</div>`).join('');
-  return `<article class="pokemon-card"><div class="card-top"><span class="dex-number">#${String(entry.id).padStart(4,'0')}</span><span class="card-progress ${progress?'has-goals':''}">${state.hasData?`${progress} / 8`:'SIN DATOS'}</span></div><div class="pokemon-portrait">${portrait(entry)}</div><h3 class="pokemon-name">${esc(entry.name)}</h3><p class="form-name">${esc(entry.form_label)}</p><div class="card-goals">${goals}</div><div class="card-footer"><span>${state.hasData?(entry.capture_count?`${entry.capture_count} captura${entry.capture_count===1?'':'s'}`:'Sin capturas'):'Sin sincronizar'}</span><button data-detail="${esc(entry.key)}" aria-label="Ver ficha de ${esc(entry.name)}, ${esc(entry.form_label)}">Ver ficha <span aria-hidden="true">↗</span></button></div></article>`;
+  return `<article class="pokemon-card"><div class="card-top"><span class="dex-number">#${String(entry.id).padStart(4,'0')}</span><span class="card-progress ${progress?'has-goals':''}">${state.hasData?`${progress} / 8`:'SIN DATOS'}</span></div><div class="pokemon-portrait">${portrait(entry)}</div><h3 class="pokemon-name">${esc(entry.name)}</h3><p class="form-name">${esc(entry.form_label)}</p><div class="card-goals">${goals}</div>${pvpBadge(entry)}<div class="card-footer"><span>${state.hasData?(entry.capture_count?`${entry.capture_count} captura${entry.capture_count===1?'':'s'}`:'Sin capturas'):'Sin sincronizar'}</span><button data-detail="${esc(entry.key)}" aria-label="Ver ficha de ${esc(entry.name)}, ${esc(entry.form_label)}">Ver ficha <span aria-hidden="true">↗</span></button></div></article>`;
 }
 
-function table(entries){return `<div class="table-container"><table class="dex-table"><thead><tr><th scope="col">Pokémon / forma</th>${GOALS.map(g=>`<th scope="col" title="${esc(g.label)}">${esc(g.short)}</th>`).join('')}</tr></thead><tbody>${entries.map(e=>`<tr><td><button class="table-pokemon" data-detail="${esc(e.key)}">${portrait(e)}<span><strong>#${String(e.id).padStart(4,'0')} ${esc(e.name)}</strong><small>${esc(e.form_label)}</small></span></button></td>${GOALS.map(g=>`<td>${e.completed.has(g.id)?'<span class="table-check" aria-label="Conseguido">✓</span>':`<span class="table-pending" aria-label="${state.hasData?'Pendiente':'Sin sincronizar'}">·</span>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;}
+function table(entries){return `<div class="table-container"><table class="dex-table"><thead><tr><th scope="col">Pokémon / forma</th>${GOALS.map(g=>`<th scope="col" title="${esc(g.label)}">${esc(g.short)}</th>`).join('')}<th scope="col">Superliga</th><th scope="col">Ultraliga</th></tr></thead><tbody>${entries.map(e=>`<tr><td><button class="table-pokemon" data-detail="${esc(e.key)}">${portrait(e)}<span><strong>#${String(e.id).padStart(4,'0')} ${esc(e.name)}</strong><small>${esc(e.form_label)}</small></span></button></td>${GOALS.map(g=>`<td>${e.completed.has(g.id)?'<span class="table-check" aria-label="Conseguido">✓</span>':`<span class="table-pending" aria-label="${state.hasData?'Pendiente':'Sin sincronizar'}">·</span>`}</td>`).join('')}${['great','ultra'].map(league=>{const target=pvpItem(league,`${e.id}:${e.form_key==='normal'?'normal':e.form_key.replace(/^form:/,'').split('|')[0]}`);return `<td>${target?`<button class="pvp-table-link" data-pvp-open="${league}" data-pvp-dest="${esc(target.destination.key)}">${pvpDone(league,target)?'✓':'·'} #${target.rank}</button>`:'—'}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div>`;}
 
 function updateStats(){
   $('navCount').textContent=state.hasData?String(state.entries.filter(e=>e.completed.size).length):'—';
@@ -67,7 +125,9 @@ function updateStats(){
 
 function render(){
   state.entries=buildEntries(state.catalog,state.snapshot||{});updateStats();
+  if(state.pvpData)for(const league of ['great','ultra'])$(league+'NavCount').textContent=String(state.pvpData.leagues[league].filter(t=>pvpDone(league,t)).length);
   if(state.view==='activity'){renderActivity();return;}
+  if(state.view==='great'||state.view==='ultra'){renderPvp();return;}
   const goal=$('goalFilter').value;
   const filtered=filterEntries(state.entries,{query:$('search').value,generation:$('generation').value,status:state.status,goal,form:$('formFilter').value,view:state.view});
   const shown=filtered.slice(0,state.limit);
@@ -94,11 +154,15 @@ function renderActivity(){
 function setView(view){
   state.view=view;state.limit=24;
   for(const b of document.querySelectorAll('[data-view]')){b.classList.toggle('active',b.dataset.view===view);if(b.dataset.view===view)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');}
-  const title={collection:'Pokédex',pending:'Pendientes',activity:'Actividad'}[view];
+  const title={collection:'Pokédex',pending:'Pendientes',activity:'Actividad',great:'Superliga',ultra:'Ultraliga'}[view];
   $('pageTitle').textContent=title;$('breadcrumb').textContent=title;
   $('collectionHeading').textContent=view==='pending'?'Objetivos pendientes':'Pokémon';
-  $('activitySection').hidden=view!=='activity';$('collectionSection').hidden=view==='activity';
+  const isPvp=view==='great'||view==='ultra';
+  $('activitySection').hidden=view!=='activity';$('collectionSection').hidden=view==='activity'||isPvp;
+  $('pvpSection').hidden=!isPvp;document.querySelector('.stats').hidden=isPvp;
+  if(isPvp){$('registerButton').hidden=true;$('exportButton').hidden=true;}else{$('registerButton').hidden=false;$('exportButton').hidden=false;}
   if(view==='pending'){state.status='all';$('goalFilter').value='';updateStatusTabs();}
+  if(isPvp){state.pvpLimit=24;$('pvpSearch').value='';$('pvpStateFilter').value='all';$('pvpSort').value='rank';}
   render();
 }
 function updateStatusTabs(){for(const b of document.querySelectorAll('[data-status]')){const selected=b.dataset.status===state.status;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));}}
@@ -107,8 +171,83 @@ function resetFilters(){state.limit=24;state.status='all';for(const id of ['sear
 function openDetail(key){
   const entry=state.entries.find(e=>e.key===key);if(!entry)return;
   const goals=GOALS.map(g=>{const record=entry.goals.find(x=>x.id===g.id);return `<div class="detail-goal ${record?'done':''}"><span aria-hidden="true">${record?'✓':''}</span><div>${esc(g.label)}${record?`<small class="sr-only"> Primera captura ${esc(dateLabel(record.first_caught_at))}</small>`:''}</div><span>${state.hasData?(record?`${record.count} captura${record.count===1?'':'s'}`:'Pendiente'):'Sin datos'}</span></div>`;}).join('');
-  $('detailContent').innerHTML=`<button class="close-dialog" aria-label="Cerrar">×</button><div class="detail-portrait">${portrait(entry,true)}</div><p class="detail-label">#${String(entry.id).padStart(4,'0')} · ${esc(entry.form_label)}</p><h2 id="detailTitle" class="detail-title">${esc(entry.name)}</h2><div class="detail-goals">${goals}</div><button class="button button-primary detail-command" data-register="${esc(entry.key)}">Registrar una captura <span aria-hidden="true">＋</span></button><p class="field-note">Las condiciones de una captura se aplican a todas las categorías compatibles. Las formas se contabilizan por separado.</p>`;
+  const pvpForm=entry.form_key==='normal'?'normal':entry.form_key.replace(/^form:/,'').split('|')[0];
+  const pvpGoals=['great','ultra'].map(league=>({league,target:pvpItem(league,`${entry.id}:${pvpForm}`)})).filter(x=>x.target);
+  const pvpDetails=pvpGoals.length?`<h3 class="pvp-detail-heading">Objetivos PvP</h3><div class="pvp-details">${pvpGoals.map(({league,target})=>`<button class="pvp-detail-action" data-pvp-open="${league}" data-pvp-dest="${esc(target.destination.key)}"><strong>${esc(LEAGUE_LABELS[league])} · #${target.rank}</strong><small>IV ${target.iv.join('/')} · ${pvpDone(league,target)?'✓ Registrado':'Pendiente'}</small></button>`).join('')}</div>`:'';
+  $('detailContent').innerHTML=`<button class="close-dialog aria-label="Cerrar">×</button><div class="detail-portrait">${portrait(entry,true)}</div><p class="detail-label">#${String(entry.id).padStart(4,'0')} · ${esc(entry.form_label)}</p><h2 id="detailTitle" class="detail-title">${esc(entry.name)}</h2><div class="detail-goals">${goals}</div>${pvpDetails}<button class="button button-primary detail-command" data-register="${esc(entry.key)}">Registrar una captura <span aria-hidden="true">＋</span></button><p class="field-note">Las condiciones de una captura se aplican a todas las categorías compatibles. Las formas se contabilizan por separado.</p>`;
   openDialog('detailDialog');
+}
+
+function renderPvp(){
+  const league=state.view;
+  const targets=state.pvpData?.leagues?.[league]||[];
+  const done=targets.filter(t=>pvpDone(league,t)).length;
+  $('greatNavCount').textContent=state.pvpData?String(state.pvpData.leagues.great.filter(t=>pvpDone('great',t)).length):'—';
+  $('ultraNavCount').textContent=state.pvpData?String(state.pvpData.leagues.ultra.filter(t=>pvpDone('ultra',t)).length):'—';
+  $('pvpSectionTitle').textContent=LEAGUE_LABELS[league];
+  $('pvpDescription').textContent=`${targets.length} destinos del CSV. El objetivo se registra una sola vez, aunque haya varias preevoluciones capturables.`;
+  $('pvpDone').textContent=`${done} / ${targets.length}`;
+  $('pvpPercent').textContent=`${targets.length?Math.round(done*100/targets.length):0} % completado`;
+  $('pvpProgressBar').style.width=`${targets.length?done*100/targets.length:0}%`;
+  const query=fold($('pvpSearch').value.trim());
+  const status=$('pvpStateFilter').value;
+  let entries=targets.filter(t=>(!query||fold([t.destination.name,t.rank,...t.candidates.map(c=>c.name)].join(' ')).includes(query))&&(status==='all'||(status==='done')===pvpDone(league,t)));
+  if($('pvpSort').value==='name')entries=entries.slice().sort((a,b)=>a.destination.name.localeCompare(b.destination.name,'es'));
+  const shown=entries.slice(0,state.pvpLimit);
+  $('pvpCatalog').innerHTML=shown.map(t=>pvpCard(league,t)).join('');
+  $('pvpEmpty').hidden=entries.length!==0;
+  $('pvpResults').textContent=`${entries.length} objetivos · ${done} registrados de ${targets.length}`;
+  $('pvpShown').textContent=entries.length?`${shown.length} de ${entries.length} objetivos`:'';
+  $('pvpMore').hidden=shown.length>=entries.length;
+}
+function pvpCard(league,target){
+  const marked=pvpDone(league,target),record=state.pvpMarks[pvpKey(league,target)];
+  const {destination:dest,iv,rank,candidates,level}=target;
+  const photo=dest.form==='normal'?`<img src="${esc(dest.dexId<=24?`./assets/sprites/${dest.dexId}.png`:`${HOME}${dest.dexId}.png`)}" alt="Imagen shiny de ${esc(dest.name)}" loading="lazy" width="102" height="102" data-dex="${dest.dexId}" data-normal="true">`:'<span class="pvp-form-image" aria-label="Forma especial, sin imagen verificada">✧</span>';
+  return `<article class="pvp-target-card ${marked?'pvp-target-completed':''}">
+    <div class="pvp-target-head"><span class="pvp-rank">#${rank} en el ranking</span><span class="pvp-state ${marked?'done':''}">${marked?'✓ Registrado':'Pendiente'}</span></div>
+    <div class="pvp-target-main"><div class="pvp-target-portrait">${photo}</div><div><span class="dex-number">#${String(dest.dexId).padStart(4,'0')}</span><h3>${esc(dest.name)}</h3><p>Pokémon destino</p></div></div>
+    <div class="pvp-specs"><span><small>IV objetivo</small><strong>${iv.join(' / ')}</strong></span><span><small>Nivel del destino</small><strong>${Number.isInteger(level)?level:String(level).replace('.',',')}</strong></span></div>
+    <div class="pvp-candidate-list"><strong>Candidatos de captura del CSV</strong><div>${candidates.map(c=>`<span>${esc(c.name)}</span>`).join('')}</div></div>
+    ${marked?`<div class="pvp-record">✓ ${esc(record.candidateName||'Shiny registrado')} · ${iv.join('/')} · ${esc(dateLabel(record.date))}</div>`:''}
+    <button class="button ${marked?'button-quiet':'button-primary'} pvp-card-action" data-pvp-open="${esc(league)}" data-pvp-dest="${esc(dest.key)}">${marked?'Ver o modificar registro':'Registrar shiny conseguido'}</button>
+  </article>`;
+}
+function openPvpDialog(league,destinationKey){
+  const target=pvpItem(league,destinationKey);if(!target)return;
+  if($('detailDialog').open)$('detailDialog').close();
+  state.pvpSelected={league,destinationKey};
+  const record=state.pvpMarks[pvpKey(league,target)];
+  $('pvpDialogTitle').textContent=`${LEAGUE_LABELS[league]} · ${target.destination.name}`;
+  $('pvpDialogDescription').textContent=`Puesto #${target.rank}. Registra un shiny de la lista que puedas evolucionar hasta ${target.destination.name} (o el propio destino).`;
+  $('pvpCandidate').replaceChildren();
+  for(const candidate of target.candidates){const opt=document.createElement('option');opt.value=candidate.key;opt.textContent=candidate.name;$('pvpCandidate').append(opt);}
+  $('pvpCandidate').value=record?.candidateKey||target.candidates[0].key;
+  $('pvpExpected').textContent=`IV requeridos: ${target.iv.join('/')} · Nivel objetivo tras evolucionar: ${target.level}`;
+  for(const [id,i] of [['pvpAtk',0],['pvpDef',1],['pvpHp',2]])$(id).value=record?String(record.iv[i]):'';
+  $('pvpConfirm').checked=false;
+  $('pvpRemove').hidden=!record;
+  openDialog('pvpDialog');
+}
+function savePvpRecord(event){
+  event.preventDefault();const {league,destinationKey}=state.pvpSelected||{};
+  const target=pvpItem(league,destinationKey);if(!target)return;
+  const iv=['pvpAtk','pvpDef','pvpHp'].map(id=>$(id).value.trim());
+  if(iv.some(v=>!/^\d{1,2}$/.test(v))){notify('Introduce los tres IV en formato 0–15.');return;}
+  const parsed=iv.map(Number);
+  if(parsed.some((v,i)=>v!==target.iv[i])){notify(`Estos IV no coinciden con el objetivo: ${target.iv.join('/')}. No se ha registrado.`);return;}
+  const candidate=target.candidates.find(c=>c.key===$('pvpCandidate').value);
+  if(!candidate||!$('pvpConfirm').checked){notify('Elige un Pokémon válido y confirma que es shiny.');return;}
+  const key=pvpKey(league,target),previous=state.pvpMarks[key];
+  state.pvpMarks[key]={candidateKey:candidate.key,candidateName:candidate.name,iv:parsed,date:previous?.date||new Date().toISOString()};
+  if(savePvpMarks()){$('pvpDialog').close();render();notify('Objetivo PvP registrado en este navegador.');}
+}
+function removePvpRecord(){
+  const {league,destinationKey}=state.pvpSelected||{};
+  const target=pvpItem(league,destinationKey);if(!target)return;
+  if(!confirm(`¿Quitar el registro PvP de ${target.destination.name} en ${LEAGUE_LABELS[league]}?`))return;
+  delete state.pvpMarks[pvpKey(league,target)];
+  if(savePvpMarks()){$('pvpDialog').close();render();notify('Registro PvP eliminado.');}
 }
 
 function registerFor(key){
@@ -166,8 +305,15 @@ $('search').addEventListener('input',()=>{state.limit=24;render();});
 $('resetFilters').addEventListener('click',resetFilters);
 $('loadMore').addEventListener('click',()=>{state.limit+=24;render();});
 for(const [id,layout] of [['gridView','grid'],['tableView','table']])$(id).addEventListener('click',()=>{state.layout=layout;for(const [other,l] of [['gridView','grid'],['tableView','table']]){$(other).classList.toggle('selected',l===layout);$(other).setAttribute('aria-pressed',String(l===layout));}render();});
-document.addEventListener('click',e=>{const detail=e.target.closest('[data-detail]');if(detail)openDetail(detail.dataset.detail);const reg=e.target.closest('[data-register]');if(reg)registerFor(reg.dataset.register);});
+document.addEventListener('click',e=>{const pvp=e.target.closest('[data-pvp-open]');if(pvp)openPvpDialog(pvp.dataset.pvpOpen,pvp.dataset.pvpDest);const detail=e.target.closest('[data-detail]');if(detail)openDetail(detail.dataset.detail);const reg=e.target.closest('[data-register]');if(reg)registerFor(reg.dataset.register);});
 $('registerButton').addEventListener('click',()=>registerFor());
+for(const id of ['pvpSearch','pvpStateFilter','pvpSort'])$(id).addEventListener(id==='pvpSearch'?'input':'change',()=>{state.pvpLimit=24;render();});
+$('pvpMore').addEventListener('click',()=>{state.pvpLimit+=24;render();});
+$('pvpForm').addEventListener('submit',savePvpRecord);
+$('pvpRemove').addEventListener('click',removePvpRecord);
+$('pvpExport').addEventListener('click',pvpExport);
+$('pvpImport').addEventListener('click',()=>$('pvpImportFile').click());
+$('pvpImportFile').addEventListener('change',async()=>{await pvpImport($('pvpImportFile').files?.[0]);$('pvpImportFile').value='';});
 for(const id of ['aboutButton','sourcesButton'])$(id).addEventListener('click',()=>openDialog('infoDialog'));
 $('syncButton').addEventListener('click',()=>sync(true));
 $('commandGoal').addEventListener('change',onGoalChange);
@@ -182,7 +328,12 @@ window.addEventListener('online',()=>sync());
 
 async function init(){
   try{
-    const response=await fetch('./assets/catalog.json');if(!response.ok)throw new Error('No se pudo cargar el catálogo.');state.catalog=await response.json();
+    const [response,pvpResponse]=await Promise.all([fetch('./assets/catalog.json'),fetch('./assets/pvp-targets.json')]);
+    if(!response.ok)throw new Error('No se pudo cargar el catálogo.');state.catalog=await response.json();
+    if(!pvpResponse.ok)throw new Error('No se pudo cargar el catálogo PvP.');state.pvpData=await pvpResponse.json();
+    if(state.pvpData.version!==1||!Array.isArray(state.pvpData.leagues.great)||!Array.isArray(state.pvpData.leagues.ultra))throw new Error('Datos PvP no válidos.');
+    for(const league of ['great','ultra'])for(const target of state.pvpData.leagues[league])state.pvpLookup.set(pvpKey(league,target),target);
+    loadPvpMarks();
     $('goalFilter').insertAdjacentHTML('beforeend',GOALS.map(g=>`<option value="${g.id}">${esc(g.label)}</option>`).join(''));
     $('commandGoal').innerHTML=GOALS.map(g=>`<option value="${g.id}">${esc(g.label)}</option>`).join('');
     $('pokemonNames').innerHTML=state.catalog.map(p=>`<option value="${esc(p.name)}">#${p.id}</option>`).join('');
