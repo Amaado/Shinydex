@@ -1,0 +1,139 @@
+/* Tema oscuro predeterminado para toda la aplicación, incluidos controles nativos. */
+:root {
+  color-scheme: dark;
+  --paper: #0f1417;
+  --white: #181f23;
+  --ink: #e5ecef;
+  --muted: #a1b0b8;
+  --line: #303d44;
+  --green: #8bd3a8;
+  --lime: #a7ddba;
+  --purple: #cfb5eb;
+  --surface-input: #131b1f;
+  --surface-hover: #222e34;
+  background: var(--paper);
+  color: var(--ink);
+  scrollbar-color: #4c5d67 #11181c;
+}
+body, .workspace { background: var(--paper); color: var(--ink); }
+::selection { background: #355b46; color: #f3fff7; }
+button:focus-visible, a:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible { outline-color: var(--green); }
+.skip-link { background: #253c30; color: var(--ink); }
+
+.sidebar { background: #11191c; color: var(--ink); border-right: 1px solid var(--line); }
+.nav-link { color: #afbec6; }
+.nav-link:hover { background: #223038; color: #f1f6f8; }
+.nav-link.active { background: #213e31; color: #bce9ca; }
+.nav-link.active:hover { background: #2a503d; color: #d4f4df; }
+.nav-count { background: #315b44; color: #e4f6e9; }
+.topbar { background: #121a1e; border-color: var(--line); }
+.breadcrumb, .breadcrumb strong { color: #b0c0c8; }
+.sync-chip { background: #1a252b; border-color: var(--line); color: #c1ced5; }
+.status-dot { background: #8b9ba4; }
+.status-dot.live { background: #8bd3a8; }
+.status-dot.error { background: #e0b76a; }
+
+.button-primary { background: #31734f; color: #f4fff7; }
+.button-primary:hover { background: #3b815c; color: #fff; }
+.button-quiet { background: #1b272d; border-color: #3a4b55; color: #d6e1e7; }
+.button-quiet:hover { background: #2a3a43; }
+.notice { background: #2d281c; border-color: #60512e; color: #ead59a; }
+.notice button { color: #f1dca6; }
+.stat { background: var(--white); border-color: var(--line); }
+.stat-label, .stat-label > span { color: #aebfc8; }
+.stat-foot, .stat-value small { color: #a3b3bc; }
+.progress-track { background: #2d3c43; }
+.progress-track span { background: #8bd3a8; }
+.section-count, .goal-hint { color: #a4b6c1; }
+
+.layout-toggle { background: #172126; border-color: var(--line); }
+.layout-toggle button { color: #a9bac5; }
+.layout-toggle button.selected { background: #30463b; color: #cbecd8; }
+.search-box { background: var(--surface-input); border-color: #3a4b55; color: #a9bcc7; }
+.search-box input { color: var(--ink); }
+.search-box input::placeholder, .dialog-content input::placeholder,
+.dialog-content textarea::placeholder { color: #a3b2bb; opacity: 1; }
+.search-box kbd { border-color: #4a5c66; color: #b4c3cc; }
+.select-wrap select { background-color: var(--surface-input); border-color: #3a4b55; color: #d0dde4; }
+select option { background: var(--surface-input); color: var(--ink); }
+.status-tabs button { color: #aebec7; }
+.status-tabs button:hover { background: #223038; color: #e5ecef; }
+.status-tabs button.selected { background: #243f32; color: #c4edcf; }
+.status-tabs button.selected:hover { background: #2d513e; color: #d6f4de; }
+
+.pokemon-card { background: var(--white); border-color: var(--line); }
+.pokemon-card:hover { border-color: #548267; box-shadow: 0 6px 22px #0005; }
+.dex-number, .form-name { color: #acbdc6; }
+.card-progress { background: #28353c; color: #b7c7d1; }
+.card-progress.has-goals { background: #264635; color: #b4e7c4; }
+.pokemon-portrait::before {
+  background: radial-gradient(circle, #2a4039 0, #1b2828 55%, transparent 72%);
+}
+.pokemon-portrait img { filter: drop-shadow(0 6px 5px #0005); }
+.pokemon-portrait .unknown-form { color: #9fbbb0; }
+.goal-cell { background: #141d21; border-color: #34434b; color: #b3c3cb; }
+.goal-circle { border-color: #667f8b; }
+.goal-cell.done { background: #203e2e; border-color: #4e7e5f; color: #c2ebcf; }
+.done .goal-circle { background: #a0ddb5; border-color: #a0ddb5; color: #10281b; }
+.goal-cell .tiny-star { color: #dcc78f; }
+.goal-cell.group-zero { color: #c5b5d4; }
+.goal-cell.group-zero.done { background: #32273d; border-color: #705783; color: #e1c9f5; }
+.group-zero.done .goal-circle { background: #d4b4ec; border-color: #d4b4ec; color: #261734; }
+.card-footer { border-color: var(--line); color: #afc1c9; }
+.card-footer span:before { color: #99b1a6; }
+.card-footer button { color: #acdcbc; }
+.load-more span { color: #a4b6c0; }
+.empty-state { background: var(--white); border-color: #4a5c66; color: #b8c7d1; }
+.empty-state h3 { color: #e5ecef; }
+
+.table-container { background: var(--white); border-color: var(--line); }
+.dex-table th { background: #22312c; color: #bed0c8; }
+.dex-table th, .dex-table td { border-color: var(--line); }
+.dex-table th:first-child { background: #22312c; }
+.dex-table td:first-child { background: var(--white); }
+.table-pokemon small { color: #acbec8; }
+.table-check { background: #2c4c38; color: #c6efd2; }
+.table-pending { color: #8b9da7; }
+.activity-row { background: var(--white); border-color: var(--line); }
+.activity-row p, .activity-row time { color: #b0c1cb; }
+.activity-row .activity-star { color: #b9d59d; }
+footer { border-color: var(--line); color: #a8bac5; }
+
+dialog { background: #181f23; border-color: #465962; color: var(--ink); box-shadow: 0 24px 80px #0009; }
+dialog::backdrop { background: #000a; }
+.close-dialog { color: #bacbd5; }
+.dialog-intro, .field-note, .detail-label { color: #b4c4cd; }
+.dialog-content label { color: #c0d0d9; }
+.dialog-content input, .dialog-content select, .dialog-content textarea {
+  background: var(--surface-input); border-color: #4c626e; color: var(--ink);
+}
+.dialog-content input:disabled, .dialog-content select:disabled {
+  background: #202b30; border-color: #3d505a; color: #b0c2cc; opacity: 1;
+}
+.dialog-content input:-webkit-autofill {
+  -webkit-text-fill-color: var(--ink);
+  box-shadow: 0 0 0 100px var(--surface-input) inset;
+}
+.command-result { background: #1a2e25; border-color: #3c6350; }
+.command-result p { color: #bbd2c4; }
+.how-steps li { border-color: var(--line); }
+.how-steps li > span { color: #a8d5b4; }
+.how-steps p, .setup-box p, .info-fine p { color: #b0c2cd; }
+.setup-box { background: #1d3028; border-color: #41614f; }
+.info-fine a { color: #b3e4c2; }
+.detail-goal { background: #141d21; border-color: #3b4d56; color: #bacbd5; }
+.detail-goal > span:first-child { border-color: #6b818e; }
+.detail-goal > span:last-child { color: #b0c2cc; }
+.detail-goal.done { background: #223f2e; border-color: #527c60; color: #d2eedc; }
+.detail-goal.done > span:first-child { background: #a0ddb5; border-color: #a0ddb5; color: #10281b; }
+.export-option { background: #1a262c; border-color: #40545f; }
+.export-option > span:first-child { background: #2b4435; color: #c6e8d1; }
+.export-option small { color: #b3c5cf; }
+.export-option:hover { background: #25363e; border-color: #769883; }
+.toast { background: #20402e; border-color: #658c71; color: #edf9f1; box-shadow: 0 8px 30px #0006; }
+.noscript { background: #382e1c; color: #eed59b; }
+
+@media (max-width:740px) {
+  .sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
+}

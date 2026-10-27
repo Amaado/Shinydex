@@ -1,0 +1,49 @@
+/* Etiquetas con más contraste y tamaño en pantallas de escritorio. */
+@media (min-width:981px){
+  .page-heading p{font-size:12px;color:#74816a}
+  .hero p{font-size:12px}
+  .hero-tag{font-size:8px}
+  .hero-link{font-size:11px}
+  .stat-label{font-size:11px;color:#728167}
+  .stat-foot{font-size:9px;color:#7b886f}
+  .button{font-size:11px}
+  .nav-link{font-size:13px}
+  .sidebar-guide p{font-size:12px}
+  .search-box input{font-size:12px}
+  .select-wrap select{font-size:10px}
+  .status-tabs button{font-size:10px}
+  .pokemon-name{font-size:17px}
+  .form-name{font-size:9px;color:#81936f}
+  .goal-cell{font-size:10px;color:#7c8c6b}
+  .card-progress,.dex-number,.card-footer,.card-footer button{font-size:9px}
+  .section-count,.goal-hint{font-size:10px}
+}
+@media(max-width:480px){
+  .hero{min-height:250px}
+  .hero-copy{padding:22px 18px}
+  .hero h2{font-size:29px;max-width:245px}
+  .hero p{font-size:10px}
+  .hero-link{font-size:10px}
+  .hero-art{top:94px;right:-19px;width:185px;height:155px}
+  .hero-art img{width:157px;height:157px}
+  .orbit-one{width:150px;height:150px;top:0;left:17px}
+  .orbit-two{width:128px;height:128px;top:11px;left:28px}
+  .specimen-tag{bottom:5px;left:28px}
+  .hero-art .s1{left:6px;top:12px;font-size:19px}
+  .hero-art .s2{right:25px;top:4px;font-size:14px}
+  .hero-art .s3{right:21px;bottom:46px;font-size:16px}
+  .page-heading p{font-size:10px}
+  .stat-label{font-size:10px}
+  .stat-foot{font-size:9px}
+  .nav-link{font-size:11px}
+  .select-wrap select{font-size:10px}
+  .pokemon-grid{grid-template-columns:1fr}
+  .pokemon-name{font-size:19px}
+  .form-name{font-size:10px}
+  .card-goals{margin-left:18px;margin-right:18px;gap:7px}
+  .goal-cell{font-size:11px;padding:8px;min-height:31px;gap:8px}
+  .goal-circle{width:12px;height:12px;font-size:8px}
+  .dex-number,.card-progress,.card-footer,.card-footer span,.card-footer button{font-size:10px}
+  .card-top{padding:17px 18px 0}
+  .card-footer{padding:14px 18px}
+}

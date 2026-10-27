@@ -1,0 +1,19 @@
+# Configuración LOCAL: no se envía a GitHub
+/config.js
+/config.json
+
+# Credenciales de servicios, tokens y archivos de entorno
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.key
+secrets/
+private/
+
+# Archivos locales
+.DS_Store
+Thumbs.db
+node_modules/
+dist/

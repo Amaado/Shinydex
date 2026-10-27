@@ -1,0 +1,86 @@
+name: Publicar Pokédex en GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Comprobar que no se ha subido config.js
+        shell: bash
+        run: |
+          if git ls-files --error-unmatch config.js >/dev/null 2>&1 || git ls-files --error-unmatch config.json >/dev/null 2>&1; then
+            echo '::error::config.js/config.json está versionado. Retíralo con git rm --cached antes de publicar.'
+            exit 1
+          fi
+
+      - name: Preparar web y generar configuración pública
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          python3 - <<'PYCODE'
+          import json
+          import os
+          import re
+          import shutil
+          from pathlib import Path
+
+          url = os.environ.get('SUPABASE_URL', '').strip().rstrip('/')
+          key = os.environ.get('SUPABASE_PUBLISHABLE_KEY', '').strip()
+          if not re.fullmatch(r'https://[a-z0-9-]+\.supabase\.co', url):
+              raise SystemExit('SUPABASE_URL no está configurada o no tiene el formato esperado.')
+          if not re.fullmatch(r'sb_publishable_[A-Za-z0-9_-]+', key):
+              raise SystemExit('SUPABASE_PUBLISHABLE_KEY debe ser una clave sb_publishable_ (NUNCA sb_secret_).')
+
+          dist = Path('dist')
+          dist.mkdir()
+          for name in ('index.html', 'styles.css', '.nojekyll'):
+              shutil.copy2(name, dist / name)
+          for directory in ('js', 'assets'):
+              shutil.copytree(directory, dist / directory)
+          configuration = {
+              'title': 'Pokédex shiny',
+              'supabaseUrl': url,
+              'publishableKey': key,
+              'collection': 'principal',
+              'refreshSeconds': 60
+          }
+          (dist / 'config.js').write_text(
+              'window.POKEDEX_CONFIG = Object.freeze(' + json.dumps(configuration, ensure_ascii=False) + ');\n',
+              encoding='utf-8'
+          )
+          print('Web preparada; config.js creado únicamente en el artefacto de publicación.')
+          PYCODE
+
+      - name: Configurar Pages
+        uses: actions/configure-pages@v5
+
+      - name: Subir artefacto de la web
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+          include-hidden-files: true
+
+      - name: Publicar en GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
