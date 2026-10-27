@@ -52,6 +52,14 @@ El bot de Discord debe conservar la clave secreta solo en su servidor o en sus v
 
 Para uso local, copia `config.example.js` a `config.js`, rellena solo la URL y la clave publicable y ejecuta un servidor HTTP local (por ejemplo `python -m http.server 8000` desde esta carpeta). `config.js` está ignorado por Git.
 
+## Desplazamiento suave y carga automática
+
+- Lenis **1.3.27** se carga desde jsDelivr mediante CSS/JS fijados a una versión concreta. No requiere npm ni proceso de compilación. Para que Lenis funcione, el navegador debe poder acceder a `cdn.jsdelivr.net`; si no puede, se conserva el scroll nativo y la Pokédex funciona igual.
+- Un `IntersectionObserver` precarga automáticamente el siguiente bloque de **24** Pokémon/objetivos cuando el botón de «Cargar más» se aproxima a **600 px** del área visible. Si el navegador no admite `IntersectionObserver`, los botones siguen funcionando manualmente.
+- La ampliación de los listados añade solo nuevas tarjetas o filas (no vuelve a pintar todo el catálogo) y respeta los filtros, el orden, el formato tabla y la navegación por ligas.
+- Los diálogos mantienen desplazamiento nativo; Lenis respeta la preferencia de movimiento reducido.
+- La política CSP permite jsDelivr exclusivamente para Lenis; la URL de Supabase y su clave publicable permanecen configuradas como antes. No hay credenciales privadas en el ZIP.
+
 ## Archivos
 
 - `.github/workflows/pages.yml`: publica la web y genera la configuración pública.

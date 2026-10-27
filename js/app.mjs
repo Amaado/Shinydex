@@ -123,13 +123,21 @@ function updateStats(){
   $('statComplete').textContent=String(complete);$('progressBar').style.width=`${100*complete/state.entries.length}%`;
 }
 
+function filteredCatalogEntries(){
+  return filterEntries(state.entries,{
+    query:$('search').value,generation:$('generation').value,
+    status:state.status,goal:$('goalFilter').value,
+    form:$('formFilter').value,view:state.view
+  });
+}
+
 function render(){
   state.entries=buildEntries(state.catalog,state.snapshot||{});updateStats();
   if(state.pvpData)for(const league of ['great','ultra'])$(league+'NavCount').textContent=String(state.pvpData.leagues[league].filter(t=>pvpDone(league,t)).length);
   if(state.view==='activity'){renderActivity();return;}
   if(state.view==='great'||state.view==='ultra'){renderPvp();return;}
   const goal=$('goalFilter').value;
-  const filtered=filterEntries(state.entries,{query:$('search').value,generation:$('generation').value,status:state.status,goal,form:$('formFilter').value,view:state.view});
+  const filtered=filteredCatalogEntries();
   const shown=filtered.slice(0,state.limit);
   $('catalog').innerHTML=state.layout==='grid'?shown.map(card).join(''):table(shown);
   $('catalog').setAttribute('aria-busy','false');
@@ -139,6 +147,27 @@ function render(){
   $('shownCount').textContent=filtered.length?`${shown.length} de ${filtered.length.toLocaleString('es-ES')} registros del catálogo`:'';
   $('loadMore').hidden=shown.length>=filtered.length;
   $('goalHint').textContent=goal?(state.status==='caught'||state.status==='complete'?'✓ Conseguidos: ':'✧ Pendientes: ')+GOALS.find(g=>g.id===goal).short:'✧ 8 objetivos por Pokémon';
+}
+
+/** Añade solo el siguiente bloque al DOM para evitar saltos de scroll. */
+function showMoreCatalog(){
+  if(state.view==='activity'||state.view==='great'||state.view==='ultra')return;
+  const filtered=filteredCatalogEntries();
+  const next=filtered.slice(state.limit,state.limit+24);
+  if(!next.length){$('loadMore').hidden=true;return;}
+  if(state.layout==='grid'){
+    $('catalog').insertAdjacentHTML('beforeend',next.map(card).join(''));
+  }else{
+    const template=document.createElement('template');
+    template.innerHTML=table(next);
+    const tbody=$('catalog').querySelector('tbody');
+    const nextRows=template.content.querySelectorAll('tbody tr');
+    if(tbody)tbody.append(...nextRows);
+    else { state.limit+=next.length;render();return; }
+  }
+  state.limit+=next.length;
+  $('shownCount').textContent=`${Math.min(state.limit,filtered.length)} de ${filtered.length.toLocaleString('es-ES')} registros del catálogo`;
+  $('loadMore').hidden=state.limit>=filtered.length;
 }
 
 function renderActivity(){
@@ -178,6 +207,15 @@ function openDetail(key){
   openDialog('detailDialog');
 }
 
+function filteredPvpTargets(league){
+  const targets=state.pvpData?.leagues?.[league]||[];
+  const query=fold($('pvpSearch').value.trim());
+  const status=$('pvpStateFilter').value;
+  let entries=targets.filter(t=>(!query||fold([t.destination.name,t.rank,...t.candidates.map(c=>c.name)].join(' ')).includes(query))&&(status==='all'||(status==='done')===pvpDone(league,t)));
+  if($('pvpSort').value==='name')entries=entries.slice().sort((a,b)=>a.destination.name.localeCompare(b.destination.name,'es'));
+  return entries;
+}
+
 function renderPvp(){
   const league=state.view;
   const targets=state.pvpData?.leagues?.[league]||[];
@@ -189,10 +227,7 @@ function renderPvp(){
   $('pvpDone').textContent=`${done} / ${targets.length}`;
   $('pvpPercent').textContent=`${targets.length?Math.round(done*100/targets.length):0} % completado`;
   $('pvpProgressBar').style.width=`${targets.length?done*100/targets.length:0}%`;
-  const query=fold($('pvpSearch').value.trim());
-  const status=$('pvpStateFilter').value;
-  let entries=targets.filter(t=>(!query||fold([t.destination.name,t.rank,...t.candidates.map(c=>c.name)].join(' ')).includes(query))&&(status==='all'||(status==='done')===pvpDone(league,t)));
-  if($('pvpSort').value==='name')entries=entries.slice().sort((a,b)=>a.destination.name.localeCompare(b.destination.name,'es'));
+  const entries=filteredPvpTargets(league);
   const shown=entries.slice(0,state.pvpLimit);
   $('pvpCatalog').innerHTML=shown.map(t=>pvpCard(league,t)).join('');
   $('pvpEmpty').hidden=entries.length!==0;
@@ -200,6 +235,18 @@ function renderPvp(){
   $('pvpShown').textContent=entries.length?`${shown.length} de ${entries.length} objetivos`:'';
   $('pvpMore').hidden=shown.length>=entries.length;
 }
+function showMorePvp(){
+  if(state.view!=='great'&&state.view!=='ultra')return;
+  const league=state.view;
+  const entries=filteredPvpTargets(league);
+  const next=entries.slice(state.pvpLimit,state.pvpLimit+24);
+  if(!next.length){$('pvpMore').hidden=true;return;}
+  $('pvpCatalog').insertAdjacentHTML('beforeend',next.map(t=>pvpCard(league,t)).join(''));
+  state.pvpLimit+=next.length;
+  $('pvpShown').textContent=`${Math.min(state.pvpLimit,entries.length)} de ${entries.length} objetivos`;
+  $('pvpMore').hidden=state.pvpLimit>=entries.length;
+}
+
 function pvpCard(league,target){
   const marked=pvpDone(league,target),record=state.pvpMarks[pvpKey(league,target)];
   const {destination:dest,iv,rank,candidates,level}=target;
@@ -303,12 +350,30 @@ for(const b of document.querySelectorAll('[data-status]'))b.addEventListener('cl
 for(const id of ['generation','goalFilter','formFilter'])$(id).addEventListener('change',()=>{state.limit=24;render();});
 $('search').addEventListener('input',()=>{state.limit=24;render();});
 $('resetFilters').addEventListener('click',resetFilters);
-$('loadMore').addEventListener('click',()=>{state.limit+=24;render();});
+$('loadMore').addEventListener('click',showMoreCatalog);
 for(const [id,layout] of [['gridView','grid'],['tableView','table']])$(id).addEventListener('click',()=>{state.layout=layout;for(const [other,l] of [['gridView','grid'],['tableView','table']]){$(other).classList.toggle('selected',l===layout);$(other).setAttribute('aria-pressed',String(l===layout));}render();});
 document.addEventListener('click',e=>{const pvp=e.target.closest('[data-pvp-open]');if(pvp)openPvpDialog(pvp.dataset.pvpOpen,pvp.dataset.pvpDest);const detail=e.target.closest('[data-detail]');if(detail)openDetail(detail.dataset.detail);const reg=e.target.closest('[data-register]');if(reg)registerFor(reg.dataset.register);});
 $('registerButton').addEventListener('click',()=>registerFor());
 for(const id of ['pvpSearch','pvpStateFilter','pvpSort'])$(id).addEventListener(id==='pvpSearch'?'input':'change',()=>{state.pvpLimit=24;render();});
-$('pvpMore').addEventListener('click',()=>{state.pvpLimit+=24;render();});
+$('pvpMore').addEventListener('click',showMorePvp);
+// Precarga cuando el botón se aproxima al área visible (600 px antes).
+// El usuario puede pulsar cualquiera de los botones si falla IntersectionObserver.
+if('IntersectionObserver' in window){
+  const autoLoadObserver=new IntersectionObserver(entries=>{
+    for(const {target,isIntersecting} of entries){
+      if(!isIntersecting||target.hidden||target.closest('section[hidden]'))continue;
+      if(document.querySelector('dialog[open]'))continue;
+      if(target.dataset.autoLoading==='1')continue;
+      target.dataset.autoLoading='1';
+      requestAnimationFrame(()=>{
+        target.dataset.autoLoading='0';
+        if(!target.hidden&&!target.closest('section[hidden]')&&!document.querySelector('dialog[open]'))target.click();
+      });
+    }
+  },{root:null,rootMargin:'0px 0px 600px 0px',threshold:0});
+  autoLoadObserver.observe($('loadMore'));
+  autoLoadObserver.observe($('pvpMore'));
+}
 $('pvpForm').addEventListener('submit',savePvpRecord);
 $('pvpRemove').addEventListener('click',removePvpRecord);
 $('pvpExport').addEventListener('click',pvpExport);
