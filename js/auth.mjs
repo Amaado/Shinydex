@@ -1,7 +1,10 @@
 /** Supabase Auth REST para una página estática. No se usa service_role en el navegador. */
 export class ShinydexAuth {
-  constructor({url,key,fetcher=(...args)=>globalThis.fetch(...args),local=localStorage,session=sessionStorage,clock=()=>Date.now()}) {
+  constructor({url,key,fetcher=(...args)=>globalThis.fetch(...args),local=localStorage,session=sessionStorage,clock=()=>Date.now(),redirectUrl=null}) {
     this.url=url;this.key=key;this.fetcher=fetcher;this.local=local;this.session=session;this.clock=clock;
+    // No usar localhost:3000 cuando la web está desplegada en GitHub Pages.
+    const current=globalThis.location;
+    this.redirectUrl=redirectUrl||(current && ['https:', 'http:'].includes(current.protocol)?`${current.origin}${current.pathname}`:null);
     this.storeKey=`shinydex:auth:v1:${url}`;
     this.value=null;this.remember=false;
   }
@@ -30,10 +33,24 @@ export class ShinydexAuth {
     const data=await this.request('token?grant_type=password',{email:email.trim(),password});
     this.save(data,remember);return this.value;
   }
+  authEndpoint(path){return path+(this.redirectUrl?`?redirect_to=${encodeURIComponent(this.redirectUrl)}`:'');}
   async signUp(email,password,remember=false){
-    const data=await this.request('signup',{email:email.trim(),password});
+    const data=await this.request(this.authEndpoint('signup'),{email:email.trim(),password});
     if(data.access_token&&data.refresh_token){this.save(data,remember);return {signedIn:true};}
     return {signedIn:false,confirmationRequired:true};
+  }
+  async resendConfirmation(email){
+    if(!email?.trim())throw Error('Introduce primero tu dirección de correo.');
+    await this.request(this.authEndpoint('resend'),{type:'signup',email:email.trim()});
+  }
+  async receiveConfirmation(hash){
+    const params=new URLSearchParams((hash||'').replace(/^#/,''));
+    const access_token=params.get('access_token');
+    const refresh_token=params.get('refresh_token');
+    if(!access_token||!refresh_token)return false;
+    const user=await this.request('user',null,access_token);
+    this.save({access_token,refresh_token,expires_in:Number(params.get('expires_in'))||3600,user},false);
+    return true;
   }
   async refresh(){
     if(!this.value?.refresh_token)return null;

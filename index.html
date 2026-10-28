@@ -15,11 +15,12 @@
   <link rel="stylesheet" href="./assets/pvp.css">
   <link rel="stylesheet" href="./assets/variants.css">
   <link rel="stylesheet" href="./assets/auth.css">
+  <link rel="stylesheet" href="./assets/compact.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lenis@1.3.27/dist/lenis.css">
   <script src="https://cdn.jsdelivr.net/npm/lenis@1.3.27/dist/lenis.min.js" defer></script>
   <script src="./js/smooth-scroll.js" defer></script>
   <script src="./config.js" defer></script>
-  <script type="module" src="./js/app.mjs?v=20261028-fetch-fix"></script>
+  <script type="module" src="./js/app.mjs?v=20261028-compact-view"></script>
 </head>
 <body class="auth-locked">
   <section id="authScreen" class="auth-screen" aria-label="Acceso a Shinydex">
@@ -31,6 +32,7 @@
       <form id="authRegisterForm" hidden><label>Correo electrónico<input type="email" id="authRegisterEmail" autocomplete="email" required></label><label>Contraseña (mínimo 6 caracteres)<input type="password" id="authRegisterPassword" autocomplete="new-password" minlength="6" required></label>
         <button type="submit" id="authRegisterSubmit" class="button button-primary">Registrarme</button></form>
       <p id="authMessage" class="auth-message" role="status" hidden></p>
+      <button type="button" id="authResend" class="auth-resend">Reenviar correo de confirmación</button>
     </div>
   </section>
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -56,10 +58,10 @@
       <section class="stats" aria-label="Resumen de la colección"><article class="stat"><div class="stat-label">Capturas registradas <span aria-hidden="true">↗</span></div><div class="stat-value" id="statCaptures">—</div><span class="stat-foot">Encuentros únicos</span></article><article class="stat"><div class="stat-label">Pokémon con objetivos <span aria-hidden="true">✦</span></div><div class="stat-value" id="statSpecies">—</div><span class="stat-foot" id="statSpeciesFoot">Especies y formas registradas</span></article><article class="stat"><div class="stat-label">Objetivos cubiertos <span aria-hidden="true">✓</span></div><div class="stat-value"><span id="statGoals">—</span><small id="statGoalTotal"></small></div><span class="stat-foot">Casillas únicas de la colección</span></article><article class="stat stat-progress"><div class="stat-label">Pokédex completadas <span aria-hidden="true">◉</span></div><div class="stat-value" id="statComplete">—</div><div class="progress-track"><span id="progressBar"></span></div><span class="stat-foot">Las 8 categorías de una misma forma</span></article></section>
 
       <section id="collectionSection" class="collection-section" aria-label="Catálogo de Pokémon">
-        <div class="section-title"><div><h2 id="collectionHeading">Pokémon</h2><span class="section-count" id="resultCount" aria-live="polite">Cargando…</span></div><div class="layout-toggle" aria-label="Vista del catálogo"><button id="gridView" class="selected" aria-label="Vista de tarjetas" aria-pressed="true">▦</button><button id="tableView" aria-label="Vista de tabla" aria-pressed="false">☰</button></div></div>
+        <div class="section-title"><div><h2 id="collectionHeading">Pokémon</h2><span class="section-count" id="resultCount" aria-live="polite">Cargando…</span></div><div class="layout-toggle" role="group" aria-label="Vista del catálogo"><button id="compactView" class="selected" title="Miniaturas" aria-label="Vista de miniaturas" aria-pressed="true">▦</button><button id="gridView" title="Tarjetas detalladas" aria-label="Vista de tarjetas detalladas" aria-pressed="false">▣</button><button id="tableView" title="Tabla" aria-label="Vista de tabla" aria-pressed="false">☰</button></div></div>
         <div class="filterbar"><label class="search-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="search" type="search" placeholder="Buscar Pokémon o número…" aria-label="Buscar por nombre, forma o número" autocomplete="off"><kbd>/</kbd></label><label class="select-wrap"><span class="sr-only">Generación</span><select id="generation"><option value="">Todas las regiones</option><option value="1">Kanto · I</option><option value="2">Johto · II</option><option value="3">Hoenn · III</option><option value="4">Sinnoh · IV</option><option value="5">Teselia · V</option><option value="6">Kalos · VI</option><option value="7">Alola · VII</option><option value="8">Galar / Hisui · VIII</option><option value="9">Paldea · IX</option></select></label><label class="select-wrap"><span class="sr-only">Categoría objetivo</span><select id="goalFilter"><option value="">Los 8 objetivos</option></select></label><label class="select-wrap"><span class="sr-only">Formas</span><select id="formFilter"><option value="all">Todas las formas</option><option value="normal">Forma normal</option><option value="variants">Otras formas capturadas</option></select></label></div>
-        <div class="collection-toolbar"><div class="status-tabs" aria-label="Filtrar por estado"><button class="selected" data-status="all" aria-pressed="true">Todos</button><button data-status="caught" aria-pressed="false">Conseguidos</button><button data-status="complete" aria-pressed="false">8 de 8 <span aria-hidden="true">✦</span></button></div><span class="goal-hint" id="goalHint">✧ 8 objetivos por Pokémon</span></div>
-        <div id="catalog" class="pokemon-grid" aria-live="polite" aria-busy="true"></div>
+        <div class="collection-toolbar"><label class="compact-monochrome-control" id="monochromeControl"><input type="checkbox" id="monochromeToggle" checked><span class="compact-switch" aria-hidden="true"></span><span>Blanco y negro para 0/8</span></label><div class="status-tabs" aria-label="Filtrar por estado"><button class="selected" data-status="all" aria-pressed="true">Todos</button><button data-status="caught" aria-pressed="false">Conseguidos</button><button data-status="complete" aria-pressed="false">8 de 8 <span aria-hidden="true">✦</span></button></div><span class="goal-hint" id="goalHint">✧ 8 objetivos por Pokémon</span></div>
+        <div id="catalog" class="pokemon-grid compact-grid" aria-live="polite" aria-busy="true"></div>
         <div id="emptyState" class="empty-state" hidden><span aria-hidden="true">⌕</span><h3>No hay coincidencias</h3><p>Prueba con otro nombre o cambia los filtros.</p><button id="resetFilters" class="button button-quiet">Quitar filtros</button></div>
         <div class="load-more"><button class="button button-quiet" id="loadMore" hidden>Ver más Pokémon <span aria-hidden="true">↓</span></button><span id="shownCount"></span></div>
       </section>

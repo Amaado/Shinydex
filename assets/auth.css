@@ -29,3 +29,6 @@ body.auth-locked .sidebar,body.auth-locked .workspace,body.auth-locked .skip-lin
 .web-variant-description{padding:12px;border:1px solid #668776;background:#203d31;border-radius:9px;color:#d3f5e0;font-size:12px;line-height:1.5}
 .web-delete{min-height:28px;padding:6px 10px;font-size:11px}
 @media(max-width:510px){.dialog-content .web-iv-row{gap:6px}}
+
+.auth-resend{display:block;margin:12px auto 0;padding:6px 8px;color:#b6e5d1;text-decoration:underline;font-size:12px;cursor:pointer}
+.auth-resend:disabled{opacity:.55;cursor:wait}
