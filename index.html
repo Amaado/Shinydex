@@ -28,6 +28,7 @@
       <button class="nav-link active" data-view="collection" aria-current="page"><span aria-hidden="true">▦</span> Mi Pokédex <span class="nav-count" id="navCount">—</span></button>
       <button class="nav-link" data-view="great"><span aria-hidden="true">⚔</span> Superliga <span class="nav-count" id="greatNavCount">—</span></button>
       <button class="nav-link" data-view="ultra"><span aria-hidden="true">◈</span> Ultraliga <span class="nav-count" id="ultraNavCount">—</span></button>
+      <button class="nav-link" data-view="baby"><span aria-hidden="true">✿</span> Baby League <span class="nav-count" id="babyNavCount">—</span></button>
       <button class="nav-link" data-view="variants"><span aria-hidden="true">✧</span> Disfraces y fondos <span class="nav-count" id="variantNavCount">—</span></button>
       <button class="nav-link" data-view="activity"><span aria-hidden="true">↗</span> Actividad</button>
     </nav>
@@ -59,13 +60,13 @@
         <div class="pvp-filterbar">
           <label class="search-box"><span aria-hidden="true">⌕</span><input id="pvpSearch" type="search" placeholder="Buscar destino o Pokémon que se puede capturar…" aria-label="Buscar objetivo PvP" autocomplete="off"></label>
           <label class="select-wrap"><span class="sr-only">Estado PvP</span><select id="pvpStateFilter"><option value="all">Todos los objetivos</option><option value="done">Registrados</option></select></label>
-          <label class="select-wrap"><span class="sr-only">Orden PvP</span><select id="pvpSort"><option value="rank">Mejor ranking</option><option value="name">Nombre A–Z</option></select></label>
+          <label class="select-wrap"><span class="sr-only">Orden PvP</span><select id="pvpSort"><option value="rank">Mejor ranking</option><option value="name">Nombre A–Z</option><option value="dex">Número de Pokédex</option></select></label>
         </div>
         <div class="pvp-toolbar"><span class="section-count" id="pvpResults">—</span><div class="pvp-data-actions"><button class="button button-quiet" id="pvpExport">Exportar progreso</button><button class="button button-quiet" id="pvpImport">Importar progreso</button><input id="pvpImportFile" type="file" accept="application/json,.json" hidden></div></div>
         <div class="pvp-grid" id="pvpCatalog" aria-live="polite"></div>
         <p id="pvpEmpty" class="pvp-empty" hidden>No hay objetivos que coincidan con estos filtros.</p>
         <div class="load-more"><button class="button button-quiet" id="pvpMore" hidden>Ver más objetivos ↓</button><span id="pvpShown"></span></div>
-        <p class="pvp-disclaimer">Los registros PvP se guardan únicamente en este navegador, no en Supabase ni en Discord. Exporta el progreso para hacer una copia. Los IV y puestos proceden del CSV aportado; no se ha verificado que estén actualizados. El nivel indicado es el objetivo del Pokémon destino tras evolucionar y potenciarlo.</p>
+        <p class="pvp-disclaimer">Los registros PvP se guardan únicamente en este navegador, no en Supabase ni en Discord. Exporta el progreso para hacer una copia. Los IV y puestos proceden del CSV aportado; no se ha verificado que estén actualizados. El nivel indicado corresponde al destino y no siempre al nivel del Pokémon capturado. En Baby League (Little Cup) el destino es la captura directa, sin evolucionar, con un límite de 500 PC; no se calcula ni verifica aquí el PC resultante.</p>
       </section>
 
       <section id="variantSection" class="variant-section" aria-label="Variantes de disfraz y fondo" hidden>

@@ -73,3 +73,7 @@ Para uso local, copia `config.example.js` a `config.js`, rellena solo la URL y l
 ## Disfraces y fondos (actualización de octubre de 2026)
 
 Se ha incorporado un catálogo de Pokémon con disfraz, con fondos especiales o de ubicación, y con ambas características simultáneamente. Las fichas y fondos se apoyan en fuentes externas contrastadas. El progreso se registra localmente en el navegador, con exportación/importación JSON. Véase [README_VARIANTES.md](README_VARIANTES.md) para instrucciones, fuentes, alcance y limitaciones. Esta modificación no concede escritura pública en Supabase.
+
+## Baby League
+
+Se añadió la vista **Baby League** (datos Little Cup, máximo 500 PC) con 116 objetivos de captura shiny y progreso independiente, usando el mismo almacenamiento local y exportación PvP que Superliga y Ultraliga. Consulta `README_PVP.md`.

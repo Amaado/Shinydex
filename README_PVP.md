@@ -1,11 +1,12 @@
 # Shinydex — categorías PvP
 
-Esta actualización conserva intactas las ocho categorías previas (`shundo`, `snundo`, tamaños, nivel 1) y añade dos vistas independientes: **Superliga** y **Ultraliga**.
+Esta actualización conserva intactas las ocho categorías previas (`shundo`, `snundo`, tamaños, nivel 1) y mantiene **Superliga** y **Ultraliga** y añade **Baby League**, correspondiente a **Little Cup (500 PC)** del CSV suministrado.
 
 ## Datos del CSV
 
 - Superliga: **189 destinos** de 355 filas de posibles capturas.
 - Ultraliga: **185 destinos** de 376 filas de posibles capturas.
+- Baby League (Little Cup): **116 destinos** de 116 filas de capturas directas (no requieren evolución); puestos entre #2 y #200. Incluye formas regionales y cuatro tamaños de Pumpkaboo por separado.
 - **121** destinos aparecen en ambas ligas (distintos objetivos por liga); **253** destinos únicos.
 - Se agrupan por Pokémon **destino**, por forma y por liga. Las posibles preevoluciones se muestran dentro del destino; no aumentan artificialmente los objetivos.
 - El JSON de datos, derivado sin consultar otros rankings, está en `assets/pvp-targets.json`. El CSV proporcionado se incluye en `data/pvpoke_capturas_shiny_y_evoluciones.csv`.
@@ -15,7 +16,7 @@ Esta actualización conserva intactas las ocho categorías previas (`shundo`, `s
 
 ## Registro y almacenamiento
 
-1. Abre Superliga o Ultraliga en el menú.
+1. Abre Superliga, Ultraliga o Baby League en el menú.
 2. Elige un **destino** y pulsa **Registrar shiny conseguido**.
 3. Elige qué Pokémon capturaste de los candidatos y **escribe los tres IV reales**.
 4. La web solo permite registrar IV **idénticos a los del destino** del CSV. Confirma que el ejemplar es shiny.
@@ -33,3 +34,9 @@ Para sincronizar el registro PvP desde Discord hay que modificar **el bot** (y d
 3. Conserva `SUPABASE_URL` y `SUPABASE_PUBLISHABLE_KEY` en `Settings → Secrets and variables → Actions → Variables`.
 4. En `Settings → Pages` elige **GitHub Actions**. El archivo `.github/workflows/pages.yml` genera `config.js` **solo en el artefacto publicado** y permite `workflow_dispatch`.
 5. Comprueba la ejecución en `Actions`. Una clave publicable es visible para quien visita la página y requiere políticas RLS correctas. Una clave secreta nunca debe llegar al navegador.
+
+## Incorporación de Baby League (octubre de 2026)
+
+El CSV completo incluye 847 filas: 355 Great League, 376 Ultra League y 116 Little Cup. No se alteró el conjunto previo de Superliga/Ultraliga, por lo que las claves locales `great:` y `ultra:` existentes siguen siendo válidas. Los nuevos registros usan `baby:` en el mismo esquema JSON, sin interferir con las otras categorías.
+
+**Alcance:** El nombre «Baby League» es la etiqueta solicitada; la fuente indica «Little Cup». No se equipara a una categoría limitada exclusivamente a Pokémon bebé. En la Copa Pequeña clásica de Pokémon GO se admiten Pokémon que puedan evolucionar y nunca hayan evolucionado; se exige un máximo de 500 PC. Esta web muestra los IV y niveles del CSV, pero NO calcula el PC y NO verifica que un ejemplar concreto sea elegible ni que los datos PvP sigan actualizados. Tampoco se confirma aquí que cada especie pueda salir shiny salvaje a fecha de publicación.
