@@ -77,3 +77,7 @@ Se ha incorporado un catálogo de Pokémon con disfraz, con fondos especiales o 
 ## Baby League
 
 Se añadió la vista **Baby League** (datos Little Cup, máximo 500 PC) con 116 objetivos de captura shiny y progreso independiente, usando el mismo almacenamiento local y exportación PvP que Superliga y Ultraliga. Consulta `README_PVP.md`.
+
+## Registro directo desde la web (octubre de 2026)
+
+El botón **Registrar captura** guarda Pokémon shiny directamente desde la página, sin Discord. Tras entrar con Supabase Auth, proporciona IV, tamaño, nivel y forma real. El SQL adicional obligatorio está en `supabase/registro_web.sql` y usa permisos RLS por usuario. Para disfraces y fondos selecciona «Guardar captura en la nube» desde su tarjeta para asociar la variante exacta. Ver `../REGISTRO_WEB_NUEVO.md` en el paquete completo.

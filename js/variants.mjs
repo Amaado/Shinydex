@@ -18,10 +18,10 @@ const localDate=v=>v?new Intl.DateTimeFormat('es-ES',{day:'2-digit',month:'short
 const download=(str,name)=>{const u=URL.createObjectURL(new Blob([str],{type:'application/json'}));const a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),5000);};
 const alertBox=text=>{el('variantError').hidden=!text;el('variantError').textContent=text||'';};
 
-export function initVariantExplorer({catalog,collection,supabaseUrl}){
+export function initVariantExplorer({catalog,collection,supabaseUrl,ownerId='guest',onRegister=()=>{}}){
   const species=new Map(catalog.map(c=>[Number(c.id),c]));
-  const storeKey=`shinydex:variants:v2:${supabaseUrl}:${collection}`;
-  const oldStoreKey=`shinydex:variants:v1:${supabaseUrl}:${collection}`;
+  const storeKey=`shinydex:variants:v2:${supabaseUrl}:${collection}:${ownerId}`;
+  const oldStoreKey=`shinydex:variants:v1:${supabaseUrl}:${collection}:${ownerId}`;
   const data={rows:[],marks:{},botMarks:{},limit:24,ready:false,fetching:false,mode:'all',visible:false,sources:'',generated:'',sort:'dex'};
   // Mantiene todas las marcas anteriores, sin asignarles IV ni tamaño que no se conocían.
   // Migración única: una vez guardado v2, no volver a incorporar marcas v1 ya eliminadas.
@@ -101,7 +101,7 @@ export function initVariantExplorer({catalog,collection,supabaseUrl}){
     updateSummary();render();
   }
   const filtered=()=>{
-    const q=fold(el('variantSearch').value),category=el('variantType').value,status=el('variantState').value,
+    const q=fold(el('variantSearch').value),category=el('variantType').value,status=el('variantState').value,goal=el('variantGoal').value,
       shiny=el('variantShiny').value,generation=el('variantGeneration').value,
       bgType=el('variantBackgroundType').value,year=el('variantYear').value,image=el('variantImage').value;
     const kinds={costume:'costume',background:'background',both:'both'};
@@ -155,6 +155,7 @@ export function initVariantExplorer({catalog,collection,supabaseUrl}){
       ${isCostumeRow(row)&&legacyMark(row)?.date?`<p class="variant-legacy">Registro anterior: shiny confirmado, sin IV/tamaño. Se conserva, pero no se atribuye ninguna de las 8 categorías.</p>`:''}
       ${done?`<p class="variant-own-record">✓ ${isCostumeRow(row)?`${goals.length} objetivos registrados`:`${record(row)?.source==='bot'?'Desde Discord · ':''}Marcado el ${esc(localDate(record(row).date))}`}</p>`:''}
       <a href="${esc(row.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="variant-source">Consultar fuente ↗</a>
+      <button type="button" class="button button-quiet variant-web-register" data-variant-register="${esc(row.key)}">＋ Guardar captura en la nube</button>
       <button type="button" class="button ${done?'button-quiet':'button-primary'} variant-mark-button" data-variant-key="${esc(row.key)}">${isCostumeRow(row)?'Registrar otra captura / consultar':'Registrar shiny conseguido'}</button></div>
     </article>`;
   }
@@ -220,6 +221,8 @@ export function initVariantExplorer({catalog,collection,supabaseUrl}){
     el('variantDialog').showModal();
   }
   el('variantCatalog').addEventListener('click',e=>{
+    const register=e.target.closest('[data-variant-register]');
+    if(register){const row=data.rows.find(r=>r.key===register.dataset.variantRegister);if(row)onRegister(row);return;}
     const btn=e.target.closest('[data-variant-key]');if(!btn)return;
     const row=data.rows.find(r=>r.key===btn.dataset.variantKey);if(row)open(row,btn.dataset.variantGoal||'');
   });

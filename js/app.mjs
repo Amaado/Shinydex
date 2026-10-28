@@ -1,5 +1,6 @@
 import {initVariantExplorer} from './variants.mjs';
 import {ShinydexAuth} from './auth.mjs';
+import {WebCapturesClient,buildWebCapture,capturePreview} from './web-captures.mjs';
 import {readSnapshots,botPvpRecords,botVariantRecords} from './bot-sync.mjs';
 import {GOALS,buildEntries,filterEntries,escapeHtml as esc,fold,makeCommand,toCsv} from './domain.mjs';
 import {PVP_SIZES,pvpVariantKey,pvpMarkValid,pvpCompletedSizes} from './extra-goals.mjs';
@@ -10,7 +11,7 @@ if(typeof raw.title==='string'&&raw.title.trim())document.title=raw.title.slice(
 const config={supabaseUrl:String(raw.supabaseUrl||'').replace(/\/$/,''),publishableKey:String(raw.publishableKey||''),collection:String(raw.collection||'principal'),refreshSeconds:Math.max(10,Math.min(600,Number(raw.refreshSeconds)||10))};
 const HOME='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/shiny/';
 const state={catalog:[],entries:[],snapshot:null,sources:{},botPvpMarks:{},pvpData:null,variantExplorer:null,pvpMarks:{},pvpLookup:new Map(),pvpLimit:24,pvpSelected:null,view:'collection',layout:'grid',status:'all',limit:24,hasData:false,fetching:false,lastUpdated:0,lastAttempt:0,failures:0};
-let pollTimer,toastTimer,configError='';
+let pollTimer,toastTimer,configError='',selectedVariant=null;
 
 function validConfig(){
   if(!config.supabaseUrl&&!config.publishableKey) return false;
@@ -26,8 +27,38 @@ function validConfig(){
 const configured=validConfig();
 const auth=configured?new ShinydexAuth({url:config.supabaseUrl,key:config.publishableKey}):null;
 let initCompleted=false;
-const cacheKey=`shinydex:v1:${config.supabaseUrl}:${config.collection}`;
-const pvpCacheKey=`shinydex:pvp:v1:${config.supabaseUrl}:${config.collection}`;
+const cacheKey=()=>`shinydex:v1:${config.supabaseUrl}:${config.collection}:${auth?.value?.user_id||'guest'}`;
+const webClient=auth?new WebCapturesClient({url:config.supabaseUrl,key:config.publishableKey,token:()=>auth.token()}):null;
+const pvpCacheKey=()=>`shinydex:pvp:v1:${config.supabaseUrl}:${config.collection}:${auth?.value?.user_id||'guest'}`;
+// Migra las marcas locales previas una sola vez al primer usuario autenticado.
+// Evita que una segunda cuenta del mismo navegador herede marcas de la primera.
+function migrateLegacyMarks(){
+  const owner=auth?.value?.user_id;
+  if(!owner)return;
+  const prefix=`${config.supabaseUrl}:${config.collection}`;
+  const migrationOwner=`shinydex:migration-owner:v1:${prefix}`;
+  try{
+    const assigned=localStorage.getItem(migrationOwner);
+    if(assigned&&assigned!==owner)return;
+    const keys=[
+      [`shinydex:pvp:v1:${prefix}`,`shinydex:pvp:v1:${prefix}:${owner}`],
+      [`shinydex:variants:v2:${prefix}`,`shinydex:variants:v2:${prefix}:${owner}`]
+    ];
+    // Si la instalación antigua solo utilizaba el formato v1 de variantes, se
+    // conserva como copia de respaldo y el explorador lo importa como v2.
+    const oldVariant=`shinydex:variants:v1:${prefix}`;
+    const newVariant=`shinydex:variants:v2:${prefix}:${owner}`;
+    if(!localStorage.getItem(newVariant)&&!localStorage.getItem(`shinydex:variants:v2:${prefix}`)){
+      const legacy=localStorage.getItem(oldVariant);
+      if(legacy){try{const data=JSON.parse(legacy);if(data?.version===1&&data.records)localStorage.setItem(newVariant,JSON.stringify({version:2,collection:config.collection,records:data.records}));}catch{}}
+    }
+    for(const [oldKey,newKey] of keys)if(!localStorage.getItem(newKey)){
+      const legacy=localStorage.getItem(oldKey);
+      if(legacy)localStorage.setItem(newKey,legacy);
+    }
+    if(!assigned)localStorage.setItem(migrationOwner,owner);
+  }catch{/* Si no hay almacenamiento, la conexión de Supabase sigue funcionando. */}
+}
 const LEAGUES=['great','ultra','baby'];
 const LEAGUE_LABELS={great:'Superliga',ultra:'Ultraliga',baby:'Baby League'};
 const LEAGUE_CHIPS={great:'Super',ultra:'Ultra',baby:'Baby'};
@@ -57,7 +88,7 @@ function pvpBadge(entry){
 }
 function loadPvpMarks(){
   try{
-    const data=JSON.parse(localStorage.getItem(pvpCacheKey)||'{}');
+    const data=JSON.parse(localStorage.getItem(pvpCacheKey())||'{}');
     const records=data?.version===1&&data?.records&&typeof data.records==='object'?data.records:{};
     state.pvpMarks={};
     for(const [key,record] of Object.entries(records)){
@@ -69,7 +100,7 @@ function loadPvpMarks(){
   }catch{state.pvpMarks={};}
 }
 function savePvpMarks(){
-  try{localStorage.setItem(pvpCacheKey,JSON.stringify({version:1,collection:config.collection,records:state.pvpMarks}));return true;}
+  try{localStorage.setItem(pvpCacheKey(),JSON.stringify({version:1,collection:config.collection,records:state.pvpMarks}));return true;}
   catch{notify('No se pudo guardar el progreso. Comprueba el almacenamiento del navegador.');return false;}
 }
 function pvpExport(){
@@ -190,11 +221,11 @@ function showMoreCatalog(){
 
 function renderActivity(){
   const recent=state.snapshot?.recent_captures||[];
-  if(!recent.length){$('activityList').innerHTML=`<div class="empty-state"><span aria-hidden="true">✧</span><h3>${state.hasData?'Sin capturas registradas':'Sin datos sincronizados'}</h3><p>${state.hasData?'Registra una captura desde Discord.':'Configura Supabase para consultar las capturas.'}</p><button class="button button-quiet" data-register="true">Registrar una captura</button></div>`;return;}
+  if(!recent.length){$('activityList').innerHTML=`<div class="empty-state"><span aria-hidden="true">✧</span><h3>${state.hasData?'Sin capturas registradas':'Sin datos sincronizados'}</h3><p>${state.hasData?'Registra una captura desde la web o desde Discord.':'Configura Supabase para consultar las capturas.'}</p><button class="button button-quiet" data-register="true">Registrar una captura</button></div>`;return;}
   const byKey=new Map(state.entries.map(e=>[e.key,e]));
   $('activityList').innerHTML=recent.map(c=>{
     const entry=byKey.get(`${c.dex_id}:${c.form_key}`);
-    return `<article class="activity-row">${entry?portrait(entry):'<span class="activity-star" aria-hidden="true">✧</span>'}<div><strong>${esc(c.pokemon_name)} <span aria-hidden="true">✦</span></strong><p>${esc(c.form_label)} · ${esc(c.account)} · ${c.source==='manual'?'Registro manual':c.source==='shiny-sniper'?'Discord / Shiny Sniper':'ShinyChecker'}<br>${(c.goals||[]).map(g=>esc(GOALS.find(x=>x.id===g)?.short||g)).join(' &nbsp; / &nbsp; ')}</p></div><time datetime="${esc(c.caught_at)}">${esc(dateLabel(c.caught_at,true))}</time></article>`;
+    return `<article class="activity-row">${entry?portrait(entry):'<span class="activity-star" aria-hidden="true">✧</span>'}<div><strong>${esc(c.pokemon_name)} <span aria-hidden="true">✦</span></strong><p>${esc(c.form_label)} · ${esc(c.account)} · ${c.source==='manual'?'Registro manual':c.source==='web'?'Registro web':c.source==='shiny-sniper'?'Discord / Shiny Sniper':'ShinyChecker'}<br>${(c.goals||[]).map(g=>esc(GOALS.find(x=>x.id===g)?.short||g)).join(' &nbsp; / &nbsp; ')}</p></div><time datetime="${esc(c.caught_at)}">${esc(dateLabel(c.caught_at,true))}</time>${c.source==='web'&&/^[0-9a-f-]{36}$/.test(String(c.web_id))?`<button type="button" class="button button-quiet web-delete" data-web-delete="${esc(c.web_id)}" aria-label="Eliminar captura de ${esc(c.pokemon_name)}">Eliminar</button>`:''}</article>`;
   }).join('');
 }
 
@@ -209,7 +240,7 @@ function setView(view){
   state.variantExplorer?.show(isVariant);
   $('activitySection').hidden=view!=='activity';$('collectionSection').hidden=view==='activity'||isPvp||isVariant;
   $('pvpSection').hidden=!isPvp;$('variantSection').hidden=!isVariant;document.querySelector('.stats').hidden=isPvp||isVariant;
-  if(isPvp||isVariant){$('registerButton').hidden=true;$('exportButton').hidden=true;}else{$('registerButton').hidden=false;$('exportButton').hidden=false;}
+  $('registerButton').hidden=false;$('exportButton').hidden=isPvp||isVariant;
   if(isPvp){state.pvpLimit=24;$('pvpSearch').value='';$('pvpStateFilter').value='all';$('pvpSizeFilter').value='all';$('pvpSort').value='rank';}
   render();
 }
@@ -344,14 +375,63 @@ function removePvpRecord(){
 
 function registerFor(key){
   if($('detailDialog').open)$('detailDialog').close();
-  $('commandForm').reset();$('commandAccount').value='principal';$('commandResult').hidden=true;
+  $('webCaptureForm').reset();$('webAccount').value='principal';$('webForm').value='normal';
+  $('webCaptureError').hidden=true;selectedVariant=null;$('webVariantDescription').hidden=true;
   if(key&&key!=='true'){
     const entry=state.entries.find(e=>e.key===key);
-    if(entry){$('commandPokemon').value=String(entry.id);const [form,costume]=entry.form_key.split('|costume:');$('commandFormName').value=form==='normal'?'':form.replace(/^form:/,'');$('commandCostume').value=costume||'';}
+    if(entry){
+      $('webPokemon').value=String(entry.id);
+      const [form,costume]=entry.form_key.split('|costume:');
+      $('webForm').value=form==='normal'?'normal':form.replace(/^form:/,'');
+      $('webCostume').value=costume||'';
+    }
   }
-  onGoalChange();openDialog('registerDialog');
+  updateWebPreview();openDialog('registerDialog');
 }
-function onGoalChange(){const goal=GOALS.find(g=>g.id===$('commandGoal').value)||GOALS[0];$('commandLevel').disabled=Boolean(goal.level);$('commandSize').disabled=Boolean(goal.size);if(goal.level)$('commandLevel').value=String(goal.level);else if($('commandLevel').disabled===false)$('commandLevel').value='';if(goal.size)$('commandSize').value=goal.size;else $('commandSize').value='';$('commandResult').hidden=true;}
+function registerVariantFromCatalog(row){
+  registerFor();
+  selectedVariant=row;
+  $('webPokemon').value=String(row.dex);
+  const slug=text=>String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9_-]/g,'').slice(0,80);
+  $('webCostume').value=row.costume?slug(row.formId||row.costume):'';
+  $('webVariantDescription').textContent=`Variante exacta: ${row.costume?`Disfraz ${row.costume}`:''}${row.background?` · Fondo ${row.background}`:''}. No cambies el Pokémon ni la variante para conservar esta asociación.`;
+  $('webVariantDescription').hidden=false;
+  updateWebPreview();
+}
+function webFields(){return {
+  pokemon:$('webPokemon').value,attack:$('webAttack').value,defense:$('webDefense').value,stamina:$('webStamina').value,
+  account:$('webAccount').value,level:$('webLevel').value,size:$('webSize').value,form:$('webForm').value,
+  costume:$('webCostume').value,background:selectedVariant?.background?String(selectedVariant.background).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9_-]/g,'').slice(0,80):'',
+  variantKey:selectedVariant?.key||'',variantKind:selectedVariant?.kind||'',variantDex:selectedVariant?.dex,
+  caughtAt:$('webCaughtAt').value,confirmed:$('webConfirmed').checked
+};}
+function updateWebPreview(){
+  try{
+    const c=buildWebCapture({...webFields(),confirmed:true},state.catalog);
+    const goals=capturePreview(c);
+    $('webCapturePreview').textContent=goals.length
+      ?`Esta captura completará ${goals.length} objetivo(s): ${goals.map(id=>GOALS.find(g=>g.id===id)?.short).join(', ')}.`
+      :'Esta captura se registrará como shiny; no satisface las 8 categorías de IV 100/0 con los datos indicados. Puede contar para PvP si coincide con los IV y el nivel objetivo.';
+  }catch(error){$('webCapturePreview').textContent='Introduce el Pokémon y sus datos reales para ver las categorías compatibles.';}
+}
+async function saveWebCapture(event){
+  event.preventDefault();$('webCaptureError').hidden=true;
+  if(!webClient){$('webCaptureError').textContent='Configura Supabase e inicia sesión para guardar capturas.';$('webCaptureError').hidden=false;return;}
+  const submit=$('webCaptureSubmit');submit.disabled=true;
+  try{
+    const capture=buildWebCapture(webFields(),state.catalog);
+    await webClient.add(config.collection,capture);
+    $('registerDialog').close();notify('Captura guardada en Supabase.');
+    // No se guardan duplicados locales: sincronización del registro recién confirmado.
+    await sync();
+  }catch(error){$('webCaptureError').textContent=error.message;$('webCaptureError').hidden=false;}
+  finally{submit.disabled=false;}
+}
+async function deleteWebCapture(id){
+  if(!webClient||!confirm('¿Eliminar esta captura registrada desde la web? Se recalcularán las categorías que cubre.'))return;
+  try{await webClient.remove(config.collection,id);notify('Captura eliminada.');await sync();}
+  catch(error){notify('Error al eliminar: '+error.message);}
+}
 
 function assertSnapshot(data){
   if(!data||data.version!==1||data.collection!==config.collection||!Array.isArray(data.entries)||!Array.isArray(data.recent_captures)||typeof data.captures_total!=='number')throw new Error('La respuesta de Supabase no tiene el formato esperado. Revisa schema.sql.');
@@ -375,7 +455,7 @@ async function sync(manual=false){
     const data=assertSnapshot(snapshot);
     state.snapshot=data;state.sources=parts;state.hasData=true;state.lastUpdated=Date.now();state.failures=warnings.length?state.failures+1:0;
     updateBotProgress();
-    try{localStorage.setItem(cacheKey,JSON.stringify({savedAt:state.lastUpdated,data,sources:parts}));}catch{/* La colección no depende del almacenamiento del navegador. */}
+    try{localStorage.setItem(cacheKey(),JSON.stringify({savedAt:state.lastUpdated,data,sources:parts}));}catch{/* La colección no depende del almacenamiento del navegador. */}
     syncState(warnings.length?'Actualización parcial':'Colección sincronizada',warnings.length?'error':'live');notice(warnings.join(' '));render();
     if($('detailDialog').open&&state.detailKey)openDetail(state.detailKey);
     $('connectionTitle').textContent='Colección conectada';$('connectionInfo').textContent=`Colección: ${config.collection}. Última lectura: ${dateLabel(new Date(state.lastUpdated),true)}. Se actualiza cada ${config.refreshSeconds} segundos mientras esta página está visible.`;
@@ -404,7 +484,7 @@ $('search').addEventListener('input',()=>{state.limit=24;render();});
 $('resetFilters').addEventListener('click',resetFilters);
 $('loadMore').addEventListener('click',showMoreCatalog);
 for(const [id,layout] of [['gridView','grid'],['tableView','table']])$(id).addEventListener('click',()=>{state.layout=layout;for(const [other,l] of [['gridView','grid'],['tableView','table']]){$(other).classList.toggle('selected',l===layout);$(other).setAttribute('aria-pressed',String(l===layout));}render();});
-document.addEventListener('click',e=>{const pvp=e.target.closest('[data-pvp-open]');if(pvp)openPvpDialog(pvp.dataset.pvpOpen,pvp.dataset.pvpDest,pvp.dataset.pvpSize||'');const detail=e.target.closest('[data-detail]');if(detail)openDetail(detail.dataset.detail);const reg=e.target.closest('[data-register]');if(reg)registerFor(reg.dataset.register);});
+document.addEventListener('click',e=>{const pvp=e.target.closest('[data-pvp-open]');if(pvp)openPvpDialog(pvp.dataset.pvpOpen,pvp.dataset.pvpDest,pvp.dataset.pvpSize||'');const detail=e.target.closest('[data-detail]');if(detail)openDetail(detail.dataset.detail);const reg=e.target.closest('[data-register]');if(reg)registerFor(reg.dataset.register);const del=e.target.closest('[data-web-delete]');if(del)deleteWebCapture(del.dataset.webDelete);});
 $('registerButton').addEventListener('click',()=>registerFor());
 for(const id of ['pvpSearch','pvpStateFilter','pvpSizeFilter','pvpSort'])$(id).addEventListener(id==='pvpSearch'?'input':'change',()=>{state.pvpLimit=24;render();});
 $('pvpMore').addEventListener('click',showMorePvp);
@@ -433,9 +513,12 @@ $('pvpImport').addEventListener('click',()=>$('pvpImportFile').click());
 $('pvpImportFile').addEventListener('change',async()=>{await pvpImport($('pvpImportFile').files?.[0]);$('pvpImportFile').value='';});
 for(const id of ['aboutButton','sourcesButton'])$(id).addEventListener('click',()=>openDialog('infoDialog'));
 $('syncButton').addEventListener('click',()=>sync(true));
-$('commandGoal').addEventListener('change',onGoalChange);
-$('commandForm').addEventListener('submit',e=>{e.preventDefault();const text=$('commandPokemon').value.trim();const dex=state.catalog.find(p=>String(p.id)===text.replace(/^#/,'')||[p.name,p.slug,...p.aliases].some(n=>fold(n)===fold(text)));if(!dex){notify('Selecciona un nombre o número de Pokémon del catálogo.');return;}$('generatedCommand').value=makeCommand({pokemon:dex.id,goal:$('commandGoal').value,account:$('commandAccount').value,size:$('commandSize').value,level:$('commandLevel').value,form:$('commandFormName').value.trim(),costume:$('commandCostume').value.trim()});$('commandResult').hidden=false;$('generatedCommand').focus();});
-$('copyCommand').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('generatedCommand').value);notify('Comando copiado. Ejecútalo en Discord.');}catch{$('generatedCommand').focus();$('generatedCommand').select();notify('Selecciona el comando y cópialo con Ctrl+C.');}});
+$('webIvPreset').addEventListener('change',()=>{const preset=$('webIvPreset').value;for(const id of ['webAttack','webDefense','webStamina'])$(id).value=preset==='100'?'15':preset==='0'?'0':'';updateWebPreview();});
+for(const id of ['webPokemon','webAttack','webDefense','webStamina','webSize','webLevel','webForm','webCostume'])$(id).addEventListener('input',()=>{
+  if(selectedVariant&&['webPokemon','webForm','webCostume'].includes(id)){selectedVariant=null;$('webVariantDescription').hidden=true;}
+  updateWebPreview();
+});
+$('webCaptureForm').addEventListener('submit',saveWebCapture);
 $('exportButton').addEventListener('click',()=>{if(!state.hasData){notify('Conecta la colección para exportar tus capturas.');return;}$('exportNote').textContent=`Datos consultados el ${dateLabel(new Date(state.lastUpdated),true)}. Para una copia de seguridad completa conserva también la base SQLite del bot.`;openDialog('exportDialog');});
 $('exportCsv').addEventListener('click',()=>{download(toCsv(state.snapshot,state.catalog),'text/csv;charset=utf-8','shinydex-'+config.collection+'.csv');$('exportDialog').close();});
 $('exportJson').addEventListener('click',()=>{download(JSON.stringify(state.snapshot,null,2),'application/json','shinydex-'+config.collection+'.json');$('exportDialog').close();});
@@ -453,11 +536,11 @@ async function initCatalog(){
     if(state.pvpData.version!==1||LEAGUES.some(league=>!Array.isArray(state.pvpData.leagues?.[league])))throw new Error('Datos PvP no válidos.');
     for(const league of LEAGUES)for(const target of state.pvpData.leagues[league])state.pvpLookup.set(pvpKey(league,target),target);
     loadPvpMarks();
-    state.variantExplorer=initVariantExplorer({catalog:state.catalog,collection:config.collection,supabaseUrl:config.supabaseUrl});
+    state.variantExplorer=initVariantExplorer({catalog:state.catalog,collection:config.collection,supabaseUrl:config.supabaseUrl,ownerId:auth?.value?.user_id||'guest',onRegister:registerVariantFromCatalog});
     $('goalFilter').insertAdjacentHTML('beforeend',GOALS.map(g=>`<option value="${g.id}">${esc(g.label)}</option>`).join(''));
-    $('commandGoal').innerHTML=GOALS.map(g=>`<option value="${g.id}">${esc(g.label)}</option>`).join('');
+    
     $('pokemonNames').innerHTML=state.catalog.map(p=>`<option value="${esc(p.name)}">#${p.id}</option>`).join('');
-    if(configured){try{const cached=JSON.parse(localStorage.getItem(cacheKey));if(cached){state.snapshot=assertSnapshot(cached.data);state.sources=cached.sources||{};state.hasData=true;state.lastUpdated=cached.savedAt;updateBotProgress();syncState('Última copia guardada');}}catch{/* Una caché inválida no se utiliza. */}}
+    if(configured){try{const cached=JSON.parse(localStorage.getItem(cacheKey()));if(cached){state.snapshot=assertSnapshot(cached.data);state.sources=cached.sources||{};state.hasData=true;state.lastUpdated=cached.savedAt;updateBotProgress();syncState('Última copia guardada');}}catch{/* Una caché inválida no se utiliza. */}}
     render();await sync();
   }catch(error){notice(error.message+' Abre la web desde GitHub Pages o un servidor HTTP local.');syncState('Catálogo no disponible','error');$('catalog').setAttribute('aria-busy','false');$('resultCount').textContent='Catálogo no disponible';}
 }
@@ -471,14 +554,15 @@ function lockAuth(message=''){
   document.body.classList.add('auth-locked');$('authScreen').hidden=false;
   $('authLogout').hidden=true;$('authAccount').textContent='';
   clearTimeout(pollTimer);
-  state.snapshot=null;state.sources={};state.botPvpMarks={};state.hasData=false;
+  state.snapshot=null;state.sources={};state.botPvpMarks={};state.hasData=false;state.pvpMarks={};
   state.variantExplorer?.setBotMarks({});authTab('login');authMessage(message,Boolean(message));
 }
 async function unlockAuth(){
   document.body.classList.remove('auth-locked');$('authScreen').hidden=true;
   $('authLogout').hidden=!auth;$('authAccount').textContent=auth?.value?.email||'';
+  migrateLegacyMarks();
   await initCatalog();
-  if(initCompleted&&state.catalog.length&&state.hasData===false&&configured)await sync();
+  if(initCompleted&&state.catalog.length){loadPvpMarks();state.variantExplorer=initVariantExplorer({catalog:state.catalog,collection:config.collection,supabaseUrl:config.supabaseUrl,ownerId:auth?.value?.user_id||'guest',onRegister:registerVariantFromCatalog});await sync();}
 }
 $('authLoginTab').addEventListener('click',()=>authTab('login'));
 $('authRegisterTab').addEventListener('click',()=>authTab('register'));
@@ -500,7 +584,7 @@ $('authRegisterForm').addEventListener('submit',async e=>{
   }catch(error){authMessage(error.message,true);}
   finally{button.disabled=false;}
 });
-$('authLogout').addEventListener('click',async()=>{if(auth)await auth.signOut();lockAuth();});
+$('authLogout').addEventListener('click',async()=>{if(auth)await auth.signOut();window.location.reload();});
 if(auth){
   lockAuth();
   try{if(await auth.restore())await unlockAuth();}catch(error){lockAuth('No se pudo restaurar la sesión. Vuelve a entrar.');}

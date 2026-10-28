@@ -11,7 +11,7 @@ export class ShinydexAuth {
   save(value,remember=this.remember){
     const next={access_token:value.access_token,refresh_token:value.refresh_token,
       expires_at:typeof value.expires_at==='number'?value.expires_at*1000:this.clock()+(Number(value.expires_in)||3600)*1000,
-      email:value.user?.email||this.value?.email||''};
+      email:value.user?.email||this.value?.email||'',user_id:value.user?.id||this.value?.user_id||''};
     if(!next.access_token||!next.refresh_token)throw Error('Supabase no ha entregado una sesión válida.');
     this.value=next;this.remember=Boolean(remember);
     this.local.removeItem(this.storeKey);this.session.removeItem(this.storeKey);
@@ -47,7 +47,7 @@ export class ShinydexAuth {
     try{const data=JSON.parse(raw);if(!data?.access_token||!data?.refresh_token)throw Error('Sesión incompleta');this.value=data;this.remember=remember;
       if(data.expires_at<=this.clock()+60000)return Boolean(await this.refresh());
       const user=await this.request('user',null,data.access_token);
-      if(user?.email){this.value.email=user.email;return true;}
+      if(user?.email){this.value.email=user.email;this.value.user_id=user.id||this.value.user_id||'';return true;}
     }catch{this.forget();}
     return false;
   }

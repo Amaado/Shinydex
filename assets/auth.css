@@ -21,3 +21,11 @@ body.auth-locked .sidebar,body.auth-locked .workspace,body.auth-locked .skip-lin
 .auth-message.error{background:#392725;color:#f5c4bb}
 .auth-account{font-size:11px;color:#aabbb9;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:600px){.auth-panel{padding:23px 17px}.auth-account{display:none}}
+/* Captura directa desde la web (sin Discord) */
+.dialog-content .web-iv-row{grid-template-columns:repeat(3,minmax(0,1fr))}
+.dialog-content .web-confirm{display:flex;flex-direction:row;align-items:flex-start;gap:10px;font-size:12px;line-height:1.5;margin:12px 0}
+.dialog-content .web-confirm input{flex:0 0 18px;width:18px;height:18px;min-height:18px;margin:2px 0 0;accent-color:#8bd5a9}
+.web-capture-error{padding:10px;background:#432726;color:#ffc9c1;border:1px solid #95534e;border-radius:8px;font-size:12px}
+.web-variant-description{padding:12px;border:1px solid #668776;background:#203d31;border-radius:9px;color:#d3f5e0;font-size:12px;line-height:1.5}
+.web-delete{min-height:28px;padding:6px 10px;font-size:11px}
+@media(max-width:510px){.dialog-content .web-iv-row{gap:6px}}

@@ -1,5 +1,5 @@
 // Integra la fuente del bot con la colección anterior sin sustituir su esquema.
-import {goalIdsForCapture,costumeGoalKey,pvpVariantKey} from './extra-goals.mjs';
+import {goalIdsForCapture,costumeGoalKey,pvpVariantKey,validCostumeBackupKey} from './extra-goals.mjs';
 export function validateSnapshot(data,collection){
   if(!data||data.version!==1||data.collection!==collection||!Array.isArray(data.entries)||!Array.isArray(data.recent_captures)||!Number.isFinite(data.captures_total))throw Error('Formato de colección no válido. Revisa el SQL de conexión.');
   if(!data.collection_available)throw Error('La colección no existe o su lectura pública está desactivada.');
@@ -24,14 +24,15 @@ export function mergeSnapshots(parts,collection){
   recent.sort((a,b)=>String(b.caught_at).localeCompare(String(a.caught_at)));
   return {version:1,collection,collection_available:true,captures_total:total,
     entries:[...entries.values()],recent_captures:recent.slice(0,30),
-    bot_progress:parts.shinydex_bot_snapshot?.bot_progress||[]};
+    bot_progress:[...(parts.shinydex_bot_snapshot?.bot_progress||[]),...(parts.shinydex_web_snapshot?.bot_progress||[])]};
 }
 
 export async function readSnapshots({url,key,collection,signal,previous={},fetcher=fetch,accessToken=null}){
   const headers={apikey:key,'Content-Type':'application/json'};
   if(accessToken)headers.Authorization=`Bearer ${accessToken}`;
   else if(key.startsWith('eyJ'))headers.Authorization=`Bearer ${key}`;
-  const results=await Promise.all(['pokedex_snapshot','shinydex_bot_snapshot'].map(async rpc=>{
+  const rpcs=['pokedex_snapshot','shinydex_bot_snapshot',...(accessToken?['shinydex_web_snapshot']:[])];
+  const results=await Promise.all(rpcs.map(async rpc=>{
     try{
       const response=await fetcher(`${url}/rest/v1/rpc/${rpc}`,{method:'POST',headers,
         body:JSON.stringify({p_collection:collection}),signal,cache:'no-store'});
@@ -43,9 +44,10 @@ export async function readSnapshots({url,key,collection,signal,previous={},fetch
   const parts={},warnings=[];
   for(const {rpc,data,error,missing} of results){
     if(data)parts[rpc]=data;
+    else if(missing&&rpc==='shinydex_web_snapshot')warnings.push('Para registrar desde la web ejecuta supabase/registro_web.sql.');
     else if(!missing){
       if(previous[rpc])parts[rpc]=previous[rpc];
-      warnings.push(error.name==='AbortError'?'La consulta ha tardado demasiado. Se reintentará.':error.message);
+      warnings.push(error?.name==='AbortError'?'La consulta ha tardado demasiado. Se reintentará.':error?.message||'Error desconocido de sincronización.');
     }
   }
   if(!results.some(r=>r.data))throw Error(warnings.join(' ')||'No hay una colección disponible. Ejecuta supabase/conectar_bot.sql.');
@@ -74,6 +76,14 @@ export function botPvpRecords(captures,pvpData){
 export function botVariantRecords(captures){
   const marks={};
   for(const c of captures){
+    if(c.shiny===true&&validCostumeBackupKey(String(c.variant_key||''))&&['costume','background','both'].includes(c.variant_kind)){
+      const date=String(c.caught_at||'').slice(0,10),rowKey=c.variant_key;
+      if(!/^\d{4}-\d\d-\d\d$/.test(date))continue;
+      const goals=c.variant_kind==='background'?[]:goalIdsForCapture(c);
+      const keys=goals.length?goals.map(goal=>costumeGoalKey(rowKey,goal)):[rowKey];
+      for(const key of keys)if(!marks[key]||date<marks[key].date)marks[key]={date,note:'Captura registrada desde la web',source:'web'};
+      continue;
+    }
     // Solo el mapeo del Zubat de Halloween 2026 está confirmado en este paquete.
     // No asociar automáticamente códigos numéricos de disfraz ambiguos ni fondos.
     if(c.shiny!==true||c.dex_id!==41||c.form!=='halloween-2026-01'||c.costume)continue;
