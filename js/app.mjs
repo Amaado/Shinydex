@@ -35,7 +35,7 @@ function pvpBadge(entry){
     const target=pvpItem(league,`${entry.id}:${form}`);
     if(!target)continue;
     const done=pvpDone(league,target);
-    chips.push(`<button class="pvp-chip ${done?'pvp-chip-done':''}" data-pvp-open="${esc(league)}" data-pvp-dest="${esc(target.destination.key)}" title="${esc(LEAGUE_LABELS[league])} #${target.rank} · IV ${target.iv.join('/')}">${league==='great'?'Super':'Ultra'} · ${done?'✓ Shiny':'Pendiente'}</button>`);
+    chips.push(`<button class="pvp-chip ${done?'pvp-chip-done':''}" data-pvp-open="${esc(league)}" data-pvp-dest="${esc(target.destination.key)}" title="${esc(LEAGUE_LABELS[league])} #${target.rank} · IV ${target.iv.join('/')}">${league==='great'?'Super':'Ultra'} · ${done?'✓ Shiny':'Ver objetivo'}</button>`);
   }
   return chips.length?`<div class="pvp-chips">${chips.join('')}</div>`:'';
 }
@@ -107,11 +107,11 @@ document.addEventListener('error',event=>{
 function card(entry){
   const progress=entry.completed.size;
   // Orden visual: los tres IV 100 y cinco IV 0, sin crear una novena categoría.
-  const goals=GOALS.map(g=>`<div class="goal-cell ${g.group==='0'?'group-zero ':''}${entry.completed.has(g.id)?'done':''}" title="${esc(g.label)}: ${state.hasData?(entry.completed.has(g.id)?'conseguido':'pendiente'):'sin sincronizar'}"><span class="goal-circle" aria-hidden="true">${entry.completed.has(g.id)?'✓':''}</span><span>${g.short}</span><span class="sr-only">${state.hasData?(entry.completed.has(g.id)?'conseguido':'pendiente'):'sin sincronizar'}</span>${g.group==='100'?'<span class="tiny-star" aria-hidden="true">✦</span>':''}</div>`).join('');
+  const goals=GOALS.map(g=>`<div class="goal-cell ${g.group==='0'?'group-zero ':''}${entry.completed.has(g.id)?'done':''}" title="${esc(g.label)}: ${state.hasData?(entry.completed.has(g.id)?'conseguido':'sin registrar'):'sin sincronizar'}"><span class="goal-circle" aria-hidden="true">${entry.completed.has(g.id)?'✓':''}</span><span>${g.short}</span><span class="sr-only">${state.hasData?(entry.completed.has(g.id)?'conseguido':'sin registrar'):'sin sincronizar'}</span>${g.group==='100'?'<span class="tiny-star" aria-hidden="true">✦</span>':''}</div>`).join('');
   return `<article class="pokemon-card"><div class="card-top"><span class="dex-number">#${String(entry.id).padStart(4,'0')}</span><span class="card-progress ${progress?'has-goals':''}">${state.hasData?`${progress} / 8`:'SIN DATOS'}</span></div><div class="pokemon-portrait">${portrait(entry)}</div><h3 class="pokemon-name">${esc(entry.name)}</h3><p class="form-name">${esc(entry.form_label)}</p><div class="card-goals">${goals}</div>${pvpBadge(entry)}<div class="card-footer"><span>${state.hasData?(entry.capture_count?`${entry.capture_count} captura${entry.capture_count===1?'':'s'}`:'Sin capturas'):'Sin sincronizar'}</span><button data-detail="${esc(entry.key)}" aria-label="Ver ficha de ${esc(entry.name)}, ${esc(entry.form_label)}">Ver ficha <span aria-hidden="true">↗</span></button></div></article>`;
 }
 
-function table(entries){return `<div class="table-container"><table class="dex-table"><thead><tr><th scope="col">Pokémon / forma</th>${GOALS.map(g=>`<th scope="col" title="${esc(g.label)}">${esc(g.short)}</th>`).join('')}<th scope="col">Superliga</th><th scope="col">Ultraliga</th></tr></thead><tbody>${entries.map(e=>`<tr><td><button class="table-pokemon" data-detail="${esc(e.key)}">${portrait(e)}<span><strong>#${String(e.id).padStart(4,'0')} ${esc(e.name)}</strong><small>${esc(e.form_label)}</small></span></button></td>${GOALS.map(g=>`<td>${e.completed.has(g.id)?'<span class="table-check" aria-label="Conseguido">✓</span>':`<span class="table-pending" aria-label="${state.hasData?'Pendiente':'Sin sincronizar'}">·</span>`}</td>`).join('')}${['great','ultra'].map(league=>{const target=pvpItem(league,`${e.id}:${e.form_key==='normal'?'normal':e.form_key.replace(/^form:/,'').split('|')[0]}`);return `<td>${target?`<button class="pvp-table-link" data-pvp-open="${league}" data-pvp-dest="${esc(target.destination.key)}">${pvpDone(league,target)?'✓':'·'} #${target.rank}</button>`:'—'}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div>`;}
+function table(entries){return `<div class="table-container"><table class="dex-table"><thead><tr><th scope="col">Pokémon / forma</th>${GOALS.map(g=>`<th scope="col" title="${esc(g.label)}">${esc(g.short)}</th>`).join('')}<th scope="col">Superliga</th><th scope="col">Ultraliga</th></tr></thead><tbody>${entries.map(e=>`<tr><td><button class="table-pokemon" data-detail="${esc(e.key)}">${portrait(e)}<span><strong>#${String(e.id).padStart(4,'0')} ${esc(e.name)}</strong><small>${esc(e.form_label)}</small></span></button></td>${GOALS.map(g=>`<td>${e.completed.has(g.id)?'<span class="table-check" aria-label="Conseguido">✓</span>':`<span class="table-pending" aria-label="${state.hasData?'Sin registro':'Sin sincronizar'}">·</span>`}</td>`).join('')}${['great','ultra'].map(league=>{const target=pvpItem(league,`${e.id}:${e.form_key==='normal'?'normal':e.form_key.replace(/^form:/,'').split('|')[0]}`);return `<td>${target?`<button class="pvp-table-link" data-pvp-open="${league}" data-pvp-dest="${esc(target.destination.key)}">${pvpDone(league,target)?'✓':'·'} #${target.rank}</button>`:'—'}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div>`;}
 
 function updateStats(){
   $('navCount').textContent=state.hasData?String(state.entries.filter(e=>e.completed.size).length):'—';
@@ -150,7 +150,7 @@ function render(){
   $('resultCount').textContent=`${filtered.length.toLocaleString('es-ES')} Pokémon y formas`;
   $('shownCount').textContent=filtered.length?`${shown.length} de ${filtered.length.toLocaleString('es-ES')} registros del catálogo`:'';
   $('loadMore').hidden=shown.length>=filtered.length;
-  $('goalHint').textContent=goal?(state.status==='caught'||state.status==='complete'?'✓ Conseguidos: ':'✧ Pendientes: ')+GOALS.find(g=>g.id===goal).short:'✧ 8 objetivos por Pokémon';
+  $('goalHint').textContent=goal?'✓ Objetivo: '+GOALS.find(g=>g.id===goal).short:'✧ 8 objetivos por Pokémon';
 }
 
 /** Añade solo el siguiente bloque al DOM para evitar saltos de scroll. */
@@ -187,16 +187,15 @@ function renderActivity(){
 function setView(view){
   state.view=view;state.limit=24;
   for(const b of document.querySelectorAll('[data-view]')){b.classList.toggle('active',b.dataset.view===view);if(b.dataset.view===view)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');}
-  const title={collection:'Pokédex',pending:'Pendientes',activity:'Actividad',great:'Superliga',ultra:'Ultraliga',variants:'Disfraces y fondos'}[view];
+  const title={collection:'Pokédex',activity:'Actividad',great:'Superliga',ultra:'Ultraliga',variants:'Disfraces y fondos'}[view];
   $('pageTitle').textContent=title;$('breadcrumb').textContent=title;
-  $('collectionHeading').textContent=view==='pending'?'Objetivos pendientes':'Pokémon';
+  $('collectionHeading').textContent='Pokémon';
   const isPvp=view==='great'||view==='ultra';
   const isVariant=view==='variants';
   state.variantExplorer?.show(isVariant);
   $('activitySection').hidden=view!=='activity';$('collectionSection').hidden=view==='activity'||isPvp||isVariant;
   $('pvpSection').hidden=!isPvp;$('variantSection').hidden=!isVariant;document.querySelector('.stats').hidden=isPvp||isVariant;
   if(isPvp||isVariant){$('registerButton').hidden=true;$('exportButton').hidden=true;}else{$('registerButton').hidden=false;$('exportButton').hidden=false;}
-  if(view==='pending'){state.status='all';$('goalFilter').value='';updateStatusTabs();}
   if(isPvp){state.pvpLimit=24;$('pvpSearch').value='';$('pvpStateFilter').value='all';$('pvpSort').value='rank';}
   render();
 }
@@ -205,10 +204,10 @@ function resetFilters(){state.limit=24;state.status='all';for(const id of ['sear
 
 function openDetail(key){
   const entry=state.entries.find(e=>e.key===key);if(!entry)return;
-  const goals=GOALS.map(g=>{const record=entry.goals.find(x=>x.id===g.id);return `<div class="detail-goal ${record?'done':''}"><span aria-hidden="true">${record?'✓':''}</span><div>${esc(g.label)}${record?`<small class="sr-only"> Primera captura ${esc(dateLabel(record.first_caught_at))}</small>`:''}</div><span>${state.hasData?(record?`${record.count} captura${record.count===1?'':'s'}`:'Pendiente'):'Sin datos'}</span></div>`;}).join('');
+  const goals=GOALS.map(g=>{const record=entry.goals.find(x=>x.id===g.id);return `<div class="detail-goal ${record?'done':''}"><span aria-hidden="true">${record?'✓':''}</span><div>${esc(g.label)}${record?`<small class="sr-only"> Primera captura ${esc(dateLabel(record.first_caught_at))}</small>`:''}</div><span>${state.hasData?(record?`${record.count} captura${record.count===1?'':'s'}`:'Sin registrar'):'Sin datos'}</span></div>`;}).join('');
   const pvpForm=entry.form_key==='normal'?'normal':entry.form_key.replace(/^form:/,'').split('|')[0];
   const pvpGoals=['great','ultra'].map(league=>({league,target:pvpItem(league,`${entry.id}:${pvpForm}`)})).filter(x=>x.target);
-  const pvpDetails=pvpGoals.length?`<h3 class="pvp-detail-heading">Objetivos PvP</h3><div class="pvp-details">${pvpGoals.map(({league,target})=>`<button class="pvp-detail-action" data-pvp-open="${league}" data-pvp-dest="${esc(target.destination.key)}"><strong>${esc(LEAGUE_LABELS[league])} · #${target.rank}</strong><small>IV ${target.iv.join('/')} · ${pvpDone(league,target)?'✓ Registrado':'Pendiente'}</small></button>`).join('')}</div>`:'';
+  const pvpDetails=pvpGoals.length?`<h3 class="pvp-detail-heading">Objetivos PvP</h3><div class="pvp-details">${pvpGoals.map(({league,target})=>`<button class="pvp-detail-action" data-pvp-open="${league}" data-pvp-dest="${esc(target.destination.key)}"><strong>${esc(LEAGUE_LABELS[league])} · #${target.rank}</strong><small>IV ${target.iv.join('/')} · ${pvpDone(league,target)?'✓ Registrado':'Sin registrar'}</small></button>`).join('')}</div>`:'';
   $('detailContent').innerHTML=`<button class="close-dialog aria-label="Cerrar">×</button><div class="detail-portrait">${portrait(entry,true)}</div><p class="detail-label">#${String(entry.id).padStart(4,'0')} · ${esc(entry.form_label)}</p><h2 id="detailTitle" class="detail-title">${esc(entry.name)}</h2><div class="detail-goals">${goals}</div>${pvpDetails}<button class="button button-primary detail-command" data-register="${esc(entry.key)}">Registrar una captura <span aria-hidden="true">＋</span></button><p class="field-note">Las condiciones de una captura se aplican a todas las categorías compatibles. Las formas se contabilizan por separado.</p>`;
   openDialog('detailDialog');
 }
@@ -217,7 +216,7 @@ function filteredPvpTargets(league){
   const targets=state.pvpData?.leagues?.[league]||[];
   const query=fold($('pvpSearch').value.trim());
   const status=$('pvpStateFilter').value;
-  let entries=targets.filter(t=>(!query||fold([t.destination.name,t.rank,...t.candidates.map(c=>c.name)].join(' ')).includes(query))&&(status==='all'||(status==='done')===pvpDone(league,t)));
+  let entries=targets.filter(t=>(!query||fold([t.destination.name,t.rank,...t.candidates.map(c=>c.name)].join(' ')).includes(query))&&(status==='all'||pvpDone(league,t)));
   if($('pvpSort').value==='name')entries=entries.slice().sort((a,b)=>a.destination.name.localeCompare(b.destination.name,'es'));
   return entries;
 }
@@ -258,7 +257,7 @@ function pvpCard(league,target){
   const {destination:dest,iv,rank,candidates,level}=target;
   const photo=dest.form==='normal'?`<img src="${esc(dest.dexId<=24?`./assets/sprites/${dest.dexId}.png`:`${HOME}${dest.dexId}.png`)}" alt="Imagen shiny de ${esc(dest.name)}" loading="lazy" width="102" height="102" data-dex="${dest.dexId}" data-normal="true">`:'<span class="pvp-form-image" aria-label="Forma especial, sin imagen verificada">✧</span>';
   return `<article class="pvp-target-card ${marked?'pvp-target-completed':''}">
-    <div class="pvp-target-head"><span class="pvp-rank">#${rank} en el ranking</span><span class="pvp-state ${marked?'done':''}">${marked?'✓ Registrado':'Pendiente'}</span></div>
+    <div class="pvp-target-head"><span class="pvp-rank">#${rank} en el ranking</span><span class="pvp-state ${marked?'done':''}">${marked?'✓ Registrado':'Sin registrar'}</span></div>
     <div class="pvp-target-main"><div class="pvp-target-portrait">${photo}</div><div><span class="dex-number">#${String(dest.dexId).padStart(4,'0')}</span><h3>${esc(dest.name)}</h3><p>Pokémon destino</p></div></div>
     <div class="pvp-specs"><span><small>IV objetivo</small><strong>${iv.join(' / ')}</strong></span><span><small>Nivel del destino</small><strong>${Number.isInteger(level)?level:String(level).replace('.',',')}</strong></span></div>
     <div class="pvp-candidate-list"><strong>Candidatos de captura del CSV</strong><div>${candidates.map(c=>`<span>${esc(c.name)}</span>`).join('')}</div></div>

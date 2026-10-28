@@ -41,3 +41,9 @@
 .dialog-content .variant-remove{margin-top:12px;width:100%}
 @media(max-width:1200px){.variant-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:730px){.variant-grid{grid-template-columns:1fr}.variant-filters .select-wrap{flex:1;min-width:44%}.variant-filters .search-box{min-width:100%;min-height:44px}.variant-actions .button{flex:1}.variant-actions{width:100%}}
+
+/* Controles de ordenación y filtros ampliados */
+.variant-filters .select-wrap{min-width:160px;flex:0 1 auto}
+.variant-filters .variant-reset{min-height:40px;align-self:stretch;white-space:nowrap}
+.variant-card-top:has(.variant-type:only-child){justify-content:flex-start}
+@media(max-width:730px){.variant-filters .variant-reset{width:100%}}

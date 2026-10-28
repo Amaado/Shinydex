@@ -19,7 +19,7 @@ const alertBox=text=>{el('variantError').hidden=!text;el('variantError').textCon
 export function initVariantExplorer({catalog,collection,supabaseUrl}){
   const species=new Map(catalog.map(c=>[Number(c.id),c]));
   const storeKey=`shinydex:variants:v1:${supabaseUrl}:${collection}`;
-  const data={rows:[],marks:{},limit:24,ready:false,fetching:false,mode:'all',visible:false,sources:'',generated:'',sort:'recent'};
+  const data={rows:[],marks:{},limit:24,ready:false,fetching:false,mode:'all',visible:false,sources:'',generated:'',sort:'dex'};
   try{const backup=JSON.parse(localStorage.getItem(storeKey)||'{}');if(backup.version===1&&backup.records&&typeof backup.records==='object'&&!Array.isArray(backup.records))data.marks=backup.records;}catch{}
   const persist=()=>{try{localStorage.setItem(storeKey,JSON.stringify({version:1,collection,records:data.marks}));return true;}catch{alertBox('Almacenamiento del navegador bloqueado: exporta una copia de tus registros.');return false;}};
   const validMark=row=>Boolean(data.marks[row.key]?.date);
@@ -82,14 +82,42 @@ export function initVariantExplorer({catalog,collection,supabaseUrl}){
       alertBox('No se pudo actualizar el catálogo de fondos externo. Se muestra una selección local de disfraces. Comprueba tu conexión y pulsa Actualizar fuentes.');
     }
     data.rows=rows;data.ready=true;data.fetching=false;el('variantRefresh').disabled=false;
+    // El catálogo externo puede actualizarse: los años se derivan de sus fechas, sin inventar eventos.
+    const yearSelect=el('variantYear'),previousYear=yearSelect.value;
+    const years=[...new Set(rows.map(r=>r.date?.slice(0,4)).filter(y=>/^\d{4}$/.test(y)))].sort((a,b)=>b.localeCompare(a));
+    yearSelect.replaceChildren(new Option('Todos los años','all'),...years.map(y=>new Option(y,y)));
+    yearSelect.value=years.includes(previousYear)?previousYear:'all';
     updateSummary();render();
   }
   const filtered=()=>{
-    const q=fold(el('variantSearch').value),category=el('variantType').value,status=el('variantState').value,shiny=el('variantShiny').value;
+    const q=fold(el('variantSearch').value),category=el('variantType').value,status=el('variantState').value,
+      shiny=el('variantShiny').value,generation=el('variantGeneration').value,
+      bgType=el('variantBackgroundType').value,year=el('variantYear').value,image=el('variantImage').value;
     const kinds={costume:'costume',background:'background',both:'both'};
-    const arr=data.rows.filter(row=>(category==='all'||row.kind===kinds[category])&&(!q||fold([row.name,row.dex,row.costume,row.background,row.bgType].join(' ')).includes(q))&&(status==='all'||(status==='done')===validMark(row))&&(shiny!=='confirmed'||row.shinyConfirmed));
-    if(el('variantSort').value==='name')arr.sort((a,b)=>a.name.localeCompare(b.name,'es')||a.key.localeCompare(b.key));
-    else arr.sort((a,b)=>(b.date||'').localeCompare(a.date||'')||a.name.localeCompare(b.name,'es'));
+    const arr=data.rows.filter(row=>{
+      if(category!=='all'&&row.kind!==kinds[category])return false;
+      if(q&&!fold([row.name,row.dex,row.costume,row.background,row.bgType,row.date].join(' ')).includes(q))return false;
+      if(status==='done'&&!validMark(row))return false;
+      if(shiny==='confirmed'&&!row.shinyConfirmed)return false;
+      if(generation!=='all'&&species.get(row.dex)?.generation!==Number(generation))return false;
+      if(bgType!=='all'&&(bgType==='none'?row.bgType!=='':row.bgType!==bgType))return false;
+      if(year!=='all'&&row.date?.slice(0,4)!==year)return false;
+      const specific=Boolean(row.picture||row.backgroundPicture);
+      if(image==='specific'&&!specific)return false;
+      if(image==='generic'&&specific)return false;
+      return true;
+    });
+    const textCmp=(a,b)=>String(a||'').localeCompare(String(b||''),'es',{numeric:true});
+    const tie=(a,b)=>textCmp(a.costume,b.costume)||textCmp(a.background,b.background)||textCmp(a.key,b.key);
+    const byDex=(a,b)=>a.dex-b.dex||tie(a,b);
+    switch(el('variantSort').value){
+      case 'dex-desc': arr.sort((a,b)=>b.dex-a.dex||tie(a,b));break;
+      case 'recent': arr.sort((a,b)=>(b.date||'').localeCompare(a.date||'')||byDex(a,b));break;
+      case 'oldest': arr.sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999')||byDex(a,b));break;
+      case 'name': arr.sort((a,b)=>textCmp(a.name,b.name)||byDex(a,b));break;
+      case 'costume': arr.sort((a,b)=>textCmp(a.costume||a.background,b.costume||b.background)||byDex(a,b));break;
+      default: arr.sort(byDex);
+    }
     return arr;
   };
   const label=row=>row.kind==='both'?'Disfraz + fondo':row.kind==='costume'?'Con disfraz':'Con fondo';
@@ -104,7 +132,7 @@ export function initVariantExplorer({catalog,collection,supabaseUrl}){
   function card(row){
     const done=validMark(row);
     return `<article class="variant-card ${done?'variant-done':''}">
-      <div class="variant-card-top"><span class="variant-type variant-type-${row.kind}">${label(row)}</span><span class="variant-state ${done?'done':''}">${done?'✓ Conseguido':'Pendiente'}</span></div>
+      <div class="variant-card-top"><span class="variant-type variant-type-${row.kind}">${label(row)}</span>${done?'<span class="variant-state done">✓ Conseguido</span>':''}</div>
       ${picture(row)}
       <div class="variant-card-body"><span class="variant-number">#${String(row.dex).padStart(4,'0')}</span><h3>${esc(row.name)}</h3>
       ${row.costume?`<p class="variant-description"><strong>Disfraz:</strong> ${esc(row.costume)}</p>`:''}
@@ -165,7 +193,13 @@ export function initVariantExplorer({catalog,collection,supabaseUrl}){
     if(!data.selected||!confirm('¿Eliminar este registro local?'))return;
     delete data.marks[data.selected.key];if(persist()){el('variantDialog').close();render();}
   });
-  for(const id of ['variantSearch','variantType','variantState','variantShiny','variantSort'])el(id).addEventListener(id==='variantSearch'?'input':'change',()=>{data.limit=24;render();});
+  const filterIds=['variantSearch','variantType','variantState','variantShiny','variantGeneration','variantBackgroundType','variantYear','variantImage','variantSort'];
+  for(const id of filterIds)el(id).addEventListener(id==='variantSearch'?'input':'change',()=>{data.limit=24;render();});
+  el('variantReset').addEventListener('click',()=>{
+    el('variantSearch').value='';
+    for(const id of filterIds.filter(id=>id!=='variantSearch'&&id!=='variantSort'))el(id).value='all';
+    el('variantSort').value='dex';data.limit=24;render();
+  });
   el('variantMore').addEventListener('click',showMore);
   el('variantRefresh').addEventListener('click',()=>refresh(true));
   el('variantExport').addEventListener('click',()=>download(JSON.stringify({version:1,collection,exportedAt:new Date().toISOString(),records:data.marks},null,2),`shinydex-variantes-${collection}.json`));

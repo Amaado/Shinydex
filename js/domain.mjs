@@ -38,11 +38,9 @@ export function filterEntries(entries,{query='',generation='',status='all',goal=
     if(generation && e.generation!==Number(generation)) return false;
     if(form==='normal' && e.form_key!=='normal') return false;
     if(form==='variants' && e.form_key==='normal') return false;
-    if(view==='pending' && e.completed.size===8) return false;
-    if(goal && ['caught','complete'].includes(status) && !e.completed.has(goal)) return false;
-    if(goal && !['caught','complete'].includes(status) && e.completed.has(goal)) return false;
+    // El filtro por categoría solo muestra objetivos ya registrados; no existe la vista Pendientes.
+    if(goal && !e.completed.has(goal)) return false;
     if(!goal && status==='caught' && !e.completed.size) return false;
-    if(!goal && status==='missing' && e.completed.size) return false;
     if(status==='complete' && e.completed.size!==8) return false;
     return true;
   });

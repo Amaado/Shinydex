@@ -36,3 +36,12 @@ En el `index.html` se ha añadido `https://raw.githubusercontent.com` a `connect
 Descomprimir y subir todo el contenido a la **raíz** del repositorio `Amaado/Shinydex`, sustituyendo archivos existentes. Conservar `config.js` fuera del repositorio; el flujo de GitHub Actions ya lo genera a partir de las variables públicas.
 
 Al desplegar, ir a «Disfraces y fondos». Si hay advertencia de fuente, pulsar «Actualizar fuentes». El catálogo de fondos necesita acceso de red al servidor de GitHub.
+
+## Actualización de filtros y orden de Pokédex
+
+- Se elimina el apartado «Pendientes» del menú y las opciones de filtrado por pendientes en la Pokédex, PvP y variantes. No se borra ningún objetivo ni registro.
+- «Todos», «Conseguidos» y «8 de 8» siguen disponibles en la Pokédex; «Todos» y «Registrados» en PvP; «Todos» y «Conseguidos» en variantes.
+- Las variantes se ordenan por número de Pokédex de forma ascendente por defecto, con orden descendente, fecha reciente/antigua, nombre y nombre del disfraz o fondo.
+- Se añaden filtros por generación, tipo de fondo (ubicación/especial/sin fondo), año documentado del evento e imagen específica/genérica.
+- «Limpiar filtros» restaura los controles y el orden de Pokédex. La autocarga por scroll continúa mostrando lotes de 24.
+- Los años disponibles se generan dinámicamente desde el catálogo cargado. Las entradas sin fecha no se asignan a ningún año.
