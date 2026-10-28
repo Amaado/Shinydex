@@ -1,6 +1,6 @@
 /** Supabase Auth REST para una página estática. No se usa service_role en el navegador. */
 export class ShinydexAuth {
-  constructor({url,key,fetcher=fetch,local=localStorage,session=sessionStorage,clock=()=>Date.now()}) {
+  constructor({url,key,fetcher=(...args)=>globalThis.fetch(...args),local=localStorage,session=sessionStorage,clock=()=>Date.now()}) {
     this.url=url;this.key=key;this.fetcher=fetcher;this.local=local;this.session=session;this.clock=clock;
     this.storeKey=`shinydex:auth:v1:${url}`;
     this.value=null;this.remember=false;

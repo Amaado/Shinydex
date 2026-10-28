@@ -47,7 +47,7 @@ export function buildWebCapture(fields,catalog){
 }
 export function capturePreview(capture){return matchedGoals(capture);}
 export class WebCapturesClient{
-  constructor({url,key,fetcher=fetch,token}){this.url=url;this.key=key;this.fetcher=fetcher;this.token=token;}
+  constructor({url,key,fetcher=(...args)=>globalThis.fetch(...args),token}){this.url=url;this.key=key;this.fetcher=fetcher;this.token=token;}
   async request(method,path,body){
     const accessToken=await this.token();
     if(!accessToken)throw Error('Inicia sesión para registrar capturas.');

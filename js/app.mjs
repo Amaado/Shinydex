@@ -1,6 +1,6 @@
 import {initVariantExplorer} from './variants.mjs';
-import {ShinydexAuth} from './auth.mjs';
-import {WebCapturesClient,buildWebCapture,capturePreview} from './web-captures.mjs';
+import {ShinydexAuth} from './auth.mjs?v=20261028-fetch-fix';
+import {WebCapturesClient,buildWebCapture,capturePreview} from './web-captures.mjs?v=20261028-fetch-fix';
 import {readSnapshots,botPvpRecords,botVariantRecords} from './bot-sync.mjs';
 import {GOALS,buildEntries,filterEntries,escapeHtml as esc,fold,makeCommand,toCsv} from './domain.mjs';
 import {PVP_SIZES,pvpVariantKey,pvpMarkValid,pvpCompletedSizes} from './extra-goals.mjs';
