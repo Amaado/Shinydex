@@ -47,3 +47,11 @@ Al desplegar, ir a «Disfraces y fondos». Si hay advertencia de fuente, pulsar 
 - Se añaden filtros por generación, tipo de fondo (ubicación/especial/sin fondo), año documentado del evento e imagen específica/genérica.
 - «Limpiar filtros» restaura los controles y el orden de Pokédex. La autocarga por scroll continúa mostrando lotes de 24.
 - Los años disponibles se generan dinámicamente desde el catálogo cargado. Las entradas sin fecha no se asignan a ningún año.
+
+## Actualización 28-10-2026: ocho objetivos por disfraz
+
+Los registros de disfraces y de **disfraz + fondo** ahora se dividen en las mismas ocho casillas que la Pokédex general. El formulario requiere especificar IV 0/0/0 o 15/15/15 y permite confirmar talla y nivel. Al guardar una captura se marcan todas las categorías compatibles (p. ej., 0/0/0 XXL nivel 1 marca tres). Se pueden añadir más capturas sin sobrescribir las ya registradas.
+
+Los fondos sin disfraz conservan un único objetivo. Las marcas anteriores, sin IV ni tamaño, se conservan como registros históricos **sin convertirlas en ninguna casilla**. El almacenamiento de variantes se ha ampliado a v2 y su importador acepta v1 y v2.
+
+La sincronización del bot requiere un disfraz inequívocamente identificado y atributos completos: actualmente se conoce la equivalencia de Zubat Halloween 2026. No se marcan disfraces con códigos dudosos ni combinaciones con fondo sin confirmación exacta.

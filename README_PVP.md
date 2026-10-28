@@ -42,3 +42,9 @@ Para sincronizar el registro PvP desde Discord hay que modificar **el bot** (y d
 El CSV completo incluye 847 filas: 355 Great League, 376 Ultra League y 116 Little Cup. No se alteró el conjunto previo de Superliga/Ultraliga, por lo que las claves locales `great:` y `ultra:` existentes siguen siendo válidas. Los nuevos registros usan `baby:` en el mismo esquema JSON, sin interferir con las otras categorías.
 
 **Alcance:** El nombre «Baby League» es la etiqueta solicitada; la fuente indica «Little Cup». No se equipara a una categoría limitada exclusivamente a Pokémon bebé. En la Copa Pequeña clásica de Pokémon GO se admiten Pokémon que puedan evolucionar y nunca hayan evolucionado; se exige un máximo de 500 PC. Esta web muestra los IV y niveles del CSV, pero NO calcula el PC y NO verifica que un ejemplar concreto sea elegible ni que los datos PvP sigan actualizados. Tampoco se confirma aquí que cada especie pueda salir shiny salvaje a fecha de publicación.
+
+## Actualización 28-10-2026: variantes por tamaño
+
+Ahora cada destino de Superliga, Ultraliga y Baby League incluye **tres casillas independientes**: shiny (cualquier tamaño), shiny XXS y shiny XXL. El total de objetivos PvP pasa a ser tres veces el número de destinos de cada liga, sin crear destinos adicionales ni modificar los IV del CSV. Se admiten capturas distintas para cada tamaño, y una captura XXL o XXS también cumple el shiny genérico.
+
+Las marcas anteriores permanecen en la clave original de destino, sin suponer que su tamaño fuera XXS/XXL. Los datos nuevos utilizan claves con sufijos `#XXS` y `#XXL`. Para que el bot marque los tamaños, hay que volver a ejecutar `supabase/conectar_bot.sql`, que ahora incluye `size` en `bot_progress`.

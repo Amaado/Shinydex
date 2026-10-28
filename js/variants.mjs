@@ -1,3 +1,5 @@
+import {GOALS} from './domain.mjs';
+import {isCostumeRow,costumeGoalKey,costumeCompletedGoals,costumeGoalTotals,goalIdsForCapture,validCostumeBackupKey} from './extra-goals.mjs';
 /* Shinydex — objetivos de disfraz, fondos de localización y fondos especiales.
    Fuente remota: psoren/pogo-bg (agrega Serebii, Dittobase y sprites de PokeMiners).
    NO confundir elegibilidad para fondo con disponibilidad shiny confirmada. */
@@ -18,12 +20,20 @@ const alertBox=text=>{el('variantError').hidden=!text;el('variantError').textCon
 
 export function initVariantExplorer({catalog,collection,supabaseUrl}){
   const species=new Map(catalog.map(c=>[Number(c.id),c]));
-  const storeKey=`shinydex:variants:v1:${supabaseUrl}:${collection}`;
+  const storeKey=`shinydex:variants:v2:${supabaseUrl}:${collection}`;
+  const oldStoreKey=`shinydex:variants:v1:${supabaseUrl}:${collection}`;
   const data={rows:[],marks:{},botMarks:{},limit:24,ready:false,fetching:false,mode:'all',visible:false,sources:'',generated:'',sort:'dex'};
-  try{const backup=JSON.parse(localStorage.getItem(storeKey)||'{}');if(backup.version===1&&backup.records&&typeof backup.records==='object'&&!Array.isArray(backup.records))data.marks=backup.records;}catch{}
-  const persist=()=>{try{localStorage.setItem(storeKey,JSON.stringify({version:1,collection,records:data.marks}));return true;}catch{alertBox('Almacenamiento del navegador bloqueado: exporta una copia de tus registros.');return false;}};
-  const record=row=>data.marks[row.key]||data.botMarks[row.key];
-  const validMark=row=>Boolean(record(row)?.date);
+  // Mantiene todas las marcas anteriores, sin asignarles IV ni tamaño que no se conocían.
+  // Migración única: una vez guardado v2, no volver a incorporar marcas v1 ya eliminadas.
+  let restoredV2=false;
+  try{const backup=JSON.parse(localStorage.getItem(storeKey)||'{}');if(backup.version===2&&backup.records&&typeof backup.records==='object'&&!Array.isArray(backup.records)){data.marks=backup.records;restoredV2=true;}}catch{}
+  if(!restoredV2)try{const legacy=JSON.parse(localStorage.getItem(oldStoreKey)||'{}');if(legacy.version===1&&legacy.records&&typeof legacy.records==='object'&&!Array.isArray(legacy.records))data.marks={...legacy.records};}catch{}
+  const persist=()=>{try{localStorage.setItem(storeKey,JSON.stringify({version:2,collection,records:data.marks}));return true;}catch{alertBox('Almacenamiento del navegador bloqueado: exporta una copia de tus registros.');return false;}};
+  const record=(row,goal='')=>data.marks[goal?costumeGoalKey(row.key,goal):row.key]||data.botMarks[goal?costumeGoalKey(row.key,goal):row.key];
+  const completed=row=>isCostumeRow(row)?costumeCompletedGoals(row,data.marks,data.botMarks):Boolean(record(row)?.date);
+  const validMark=row=>isCostumeRow(row)?completed(row).length>0:completed(row);
+  const goalRecord=(row,id)=>record(row,id);
+  const legacyMark=row=>isCostumeRow(row)?record(row):null;
   function makeSeedRows(seed){
     return (seed.costumes||[]).filter(x=>Array.isArray(x)&&Number.isInteger(x[0])&&isAvailable(x[3])).map(([dex,name,costume,date,shiny],i)=>({
       key:`c:seed:${dex}:${slug(costume)}`,kind:'costume',dex,name:species.get(dex)?.name||name,costume,background:'',bgType:'',date,shinyConfirmed:shiny===true,shinyStatus:shiny===true?'confirmado':'sin-verificar',picture:null,basePicture:(dex<=24?`./assets/sprites/${dex}.png`:HOME+dex+'.png'),backgroundPicture:null,source:'WikiDex / Pokémon GO',sourceUrl:shiny===true?'https://pokemongo.com/news/halloween-part-1-2026':'https://www.wikidex.net/wiki/Lista_de_Pok%C3%A9mon_de_Pok%C3%A9mon_GO',note:'Imagen genérica si no hay ilustración exacta del disfraz',formId:null
@@ -99,6 +109,8 @@ export function initVariantExplorer({catalog,collection,supabaseUrl}){
       if(category!=='all'&&row.kind!==kinds[category])return false;
       if(q&&!fold([row.name,row.dex,row.costume,row.background,row.bgType,row.date].join(' ')).includes(q))return false;
       if(status==='done'&&!validMark(row))return false;
+      if(status==='complete'&&(!isCostumeRow(row)||completed(row).length!==GOALS.length))return false;
+      if(goal!=='all'&&(!isCostumeRow(row)||!goalRecord(row,goal)?.date))return false;
       if(shiny==='confirmed'&&!row.shinyConfirmed)return false;
       if(generation!=='all'&&species.get(row.dex)?.generation!==Number(generation))return false;
       if(bgType!=='all'&&(bgType==='none'?row.bgType!=='':row.bgType!==bgType))return false;
@@ -131,33 +143,36 @@ export function initVariantExplorer({catalog,collection,supabaseUrl}){
     </div>`;
   }
   function card(row){
-    const done=validMark(row);
+    const done=validMark(row),goals=isCostumeRow(row)?completed(row):[];
     return `<article class="variant-card ${done?'variant-done':''}">
-      <div class="variant-card-top"><span class="variant-type variant-type-${row.kind}">${label(row)}</span>${done?'<span class="variant-state done">✓ Conseguido</span>':''}</div>
+      <div class="variant-card-top"><span class="variant-type variant-type-${row.kind}">${label(row)}</span>${done?`<span class="variant-state done">✓ ${isCostumeRow(row)?goals.length+' / 8':'Conseguido'}</span>`:''}</div>
       ${picture(row)}
       <div class="variant-card-body"><span class="variant-number">#${String(row.dex).padStart(4,'0')}</span><h3>${esc(row.name)}</h3>
       ${row.costume?`<p class="variant-description"><strong>Disfraz:</strong> ${esc(row.costume)}</p>`:''}
       ${row.background?`<p class="variant-description"><strong>Fondo:</strong> ${esc(row.background)} <span class="variant-subtle">(${row.bgType==='location'?'ubicación':'especial'})</span></p>`:''}
       <div class="variant-metadata"><span>${esc(localDate(row.date))}</span><span title="La elegibilidad para un fondo no demuestra que esa combinación pudiera salir shiny">${row.shinyConfirmed?'✦ Shiny documentado':'Shiny no verificado'}</span></div>
-      ${done?`<p class="variant-own-record">✓ ${record(row)?.source==='bot'?'Desde Discord · ':''}Marcado el ${esc(localDate(record(row).date))}</p>`:''}
+      ${isCostumeRow(row)?`<div class="costume-goal-grid" aria-label="Ocho objetivos de este disfraz">${GOALS.map(g=>`<button type="button" class="costume-goal ${goals.includes(g.id)?'done':''}" data-variant-key="${esc(row.key)}" data-variant-goal="${g.id}" title="${esc(g.label)}: ${goals.includes(g.id)?'conseguido':'sin registrar'}"><span>${goals.includes(g.id)?'✓ ':''}${esc(g.short)}</span></button>`).join('')}</div>`:''}
+      ${isCostumeRow(row)&&legacyMark(row)?.date?`<p class="variant-legacy">Registro anterior: shiny confirmado, sin IV/tamaño. Se conserva, pero no se atribuye ninguna de las 8 categorías.</p>`:''}
+      ${done?`<p class="variant-own-record">✓ ${isCostumeRow(row)?`${goals.length} objetivos registrados`:`${record(row)?.source==='bot'?'Desde Discord · ':''}Marcado el ${esc(localDate(record(row).date))}`}</p>`:''}
       <a href="${esc(row.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="variant-source">Consultar fuente ↗</a>
-      <button type="button" class="button ${done?'button-quiet':'button-primary'} variant-mark-button" data-variant-key="${esc(row.key)}">${done?'Modificar registro':'Registrar shiny conseguido'}</button></div>
+      <button type="button" class="button ${done?'button-quiet':'button-primary'} variant-mark-button" data-variant-key="${esc(row.key)}">${isCostumeRow(row)?'Registrar otra captura / consultar':'Registrar shiny conseguido'}</button></div>
     </article>`;
   }
   function updateSummary(){
-    const total=data.rows.length,done=data.rows.filter(validMark).length;
+    const {done,total}=costumeGoalTotals(data.rows,data.marks,data.botMarks);
     const costume=data.rows.filter(r=>r.kind==='costume').length, backgrounds=data.rows.filter(r=>r.kind==='background').length,both=data.rows.filter(r=>r.kind==='both').length;
     el('variantNavCount').textContent=String(done);
     el('variantDone').textContent=`${done} / ${total}`;
     el('variantPercent').textContent=total?`${Math.round(100*done/total)} % registrado`:'Sin catálogo';
     el('variantProgressBar').style.width=`${total?done*100/total:0}%`;
-    el('variantDescription').textContent=`${costume} disfraces · ${backgrounds} Pokémon con fondo · ${both} combinaciones de ambos. ${data.sources}${data.generated?' (datos '+data.generated+')':''}.`;
+    el('variantDescription').textContent=`${costume} disfraces · ${backgrounds} Pokémon con fondo · ${both} combinaciones de ambos. 8 objetivos por disfraz; 1 por fondo sin disfraz. ${data.sources}${data.generated?' (datos '+data.generated+')':''}.`;
   }
+  const totalGoalCount=rows=>rows.reduce((n,r)=>n+(isCostumeRow(r)?GOALS.length:1),0);
   function render(){
     updateSummary();if(!data.visible)return;
     const all=filtered(),shown=all.slice(0,data.limit);
     el('variantCatalog').innerHTML=shown.map(card).join('');
-    el('variantResults').textContent=`${all.length.toLocaleString('es-ES')} objetivos de variantes`;
+    el('variantResults').textContent=`${all.length.toLocaleString('es-ES')} entradas · ${totalGoalCount(all).toLocaleString('es-ES')} objetivos`; 
     el('variantShown').textContent=all.length?`${shown.length} de ${all.length}`:'Sin coincidencias';
     el('variantMore').hidden=shown.length>=all.length;
     el('variantEmpty').hidden=all.length>0;
@@ -170,32 +185,68 @@ export function initVariantExplorer({catalog,collection,supabaseUrl}){
     el('variantShown').textContent=`${Math.min(data.limit,all.length)} de ${all.length}`;
     el('variantMore').hidden=data.limit>=all.length;
   }
-  function open(row){
+  function updateDialogGoalState(){
+    const row=data.selected;if(!row)return;
+    const costume=isCostumeRow(row);
+    el('variantCostumeInputs').hidden=!costume;
+    el('variantRemoveWrap').hidden=false;
+    if(!costume){
+      el('variantRemoveGoal').replaceChildren(new Option('Registro de fondo',''));
+      el('variantRecordDelete').hidden=!data.marks[row.key];
+      return;
+    }
+    const options=GOALS.filter(g=>Boolean(data.marks[costumeGoalKey(row.key,g.id)]?.date)).map(g=>new Option(g.label,g.id));
+    if(data.marks[row.key]?.date)options.push(new Option('Registro antiguo (sin clasificar)','legacy'));
+    el('variantRemoveGoal').replaceChildren(...options);
+    el('variantRemoveWrap').hidden=options.length===0;
+    el('variantRecordDelete').hidden=options.length===0;
+  }
+  function open(row,selectedGoal=''){
     data.selected=row;
     el('variantDialogTitle').textContent=`${row.name} · ${label(row)}`;
     el('variantDialogDescription').textContent=[row.costume?`Disfraz: ${row.costume}`:'',row.background?`Fondo: ${row.background}`:''].filter(Boolean).join(' · ');
-    el('variantRecordDate').value=record(row)?.date||today();
-    el('variantRecordNote').value=record(row)?.note||'';
+    el('variantRecordDate').value=today();
+    el('variantRecordNote').value='';
     el('variantRecordConfirm').checked=false;
-    el('variantRecordDelete').hidden=!data.marks[row.key];
-    if(record(row)?.source==='bot')el('variantDialogDescription').textContent+=' · Captura sincronizada. Para deshacerla utiliza el bot.';
+    el('variantIV').value=selectedGoal.startsWith('shundo')?'15':selectedGoal.startsWith('snundo')?'0':'';
+    el('variantSize').value=selectedGoal.includes('xxs')?'XXS':selectedGoal.includes('xxl')?'XXL':'';
+    el('variantLevel').value=selectedGoal.includes('_l1')?'1':'';
+    el('variantCostumeHelp').textContent=isCostumeRow(row)
+      ?'Se marcarán automáticamente todas las casillas compatibles: por ejemplo, 0/0/0 · XXS · nivel 1 cubre 3 objetivos. Puedes registrar más capturas sin perder las anteriores.'
+      :'';
+    if(isCostumeRow(row)&&legacyMark(row)?.date)el('variantDialogDescription').textContent+=' · Registro antiguo conservado sin IV ni talla.';
+    if(!isCostumeRow(row)&&record(row)?.source==='bot')el('variantDialogDescription').textContent+=' · Captura desde Discord; para deshacer, utiliza el bot.';
+    updateDialogGoalState();
     el('variantDialog').showModal();
   }
   el('variantCatalog').addEventListener('click',e=>{
     const btn=e.target.closest('[data-variant-key]');if(!btn)return;
-    const row=data.rows.find(r=>r.key===btn.dataset.variantKey);if(row)open(row);
+    const row=data.rows.find(r=>r.key===btn.dataset.variantKey);if(row)open(row,btn.dataset.variantGoal||'');
   });
   el('variantForm').addEventListener('submit',e=>{
     e.preventDefault();if(!data.selected||!el('variantRecordConfirm').checked)return;
     const date=el('variantRecordDate').value;if(!/^\d{4}-\d\d-\d\d$/.test(date)){alertBox('Selecciona una fecha válida.');return;}
-    data.marks[data.selected.key]={date,note:el('variantRecordNote').value.slice(0,240)};
-    if(persist()){el('variantDialog').close();render();}
+    const row=data.selected, note=el('variantRecordNote').value.slice(0,240);
+    if(isCostumeRow(row)){
+      const iv=el('variantIV').value,levelString=el('variantLevel').value;
+      if(iv!=='0'&&iv!=='15'){alertBox('Confirma si los IV son 0/0/0 o 15/15/15.');return;}
+      if(levelString&&(!Number.isFinite(Number(levelString))||Number(levelString)<1||Number(levelString)>51||Number(levelString)*2%1!==0)){
+        alertBox('Nivel inválido: debe estar entre 1 y 51, en pasos de 0,5.');return;
+      }
+      const goals=goalIdsForCapture({shiny:true,attack:Number(iv),defense:Number(iv),stamina:Number(iv),size:el('variantSize').value,level:levelString?Number(levelString):null});
+      if(!goals.length){alertBox('La captura no coincide con ninguno de los ocho objetivos. Comprueba IV, nivel y tamaño.');return;}
+      for(const goal of goals){const key=costumeGoalKey(row.key,goal);if(!data.marks[key])data.marks[key]={date,note};}
+    }else data.marks[row.key]={date,note};
+    if(persist()){el('variantDialog').close();alertBox('Captura registrada y categorías compatibles actualizadas.');render();}
   });
   el('variantRecordDelete').addEventListener('click',()=>{
-    if(!data.selected||!confirm('¿Eliminar este registro local?'))return;
-    delete data.marks[data.selected.key];if(persist()){el('variantDialog').close();render();}
+    if(!data.selected)return;
+    const row=data.selected,goal=el('variantRemoveGoal').value;
+    if(!confirm('¿Eliminar este registro local? Los registrados desde Discord solo se pueden deshacer en el bot.'))return;
+    delete data.marks[goal&&goal!=='legacy'?costumeGoalKey(row.key,goal):row.key];
+    if(persist()){el('variantDialog').close();render();}
   });
-  const filterIds=['variantSearch','variantType','variantState','variantShiny','variantGeneration','variantBackgroundType','variantYear','variantImage','variantSort'];
+  const filterIds=['variantSearch','variantType','variantState','variantGoal','variantShiny','variantGeneration','variantBackgroundType','variantYear','variantImage','variantSort'];
   for(const id of filterIds)el(id).addEventListener(id==='variantSearch'?'input':'change',()=>{data.limit=24;render();});
   el('variantReset').addEventListener('click',()=>{
     el('variantSearch').value='';
@@ -204,15 +255,14 @@ export function initVariantExplorer({catalog,collection,supabaseUrl}){
   });
   el('variantMore').addEventListener('click',showMore);
   el('variantRefresh').addEventListener('click',()=>refresh(true));
-  el('variantExport').addEventListener('click',()=>download(JSON.stringify({version:1,collection,exportedAt:new Date().toISOString(),records:data.marks},null,2),`shinydex-variantes-${collection}.json`));
+  el('variantExport').addEventListener('click',()=>download(JSON.stringify({version:2,collection,exportedAt:new Date().toISOString(),records:data.marks},null,2),`shinydex-variantes-${collection}.json`));
   el('variantImport').addEventListener('click',()=>el('variantFile').click());
   el('variantFile').addEventListener('change',async()=>{
     const file=el('variantFile').files?.[0];el('variantFile').value='';if(!file||file.size>2000000)return;
-    try{const backup=JSON.parse(await file.text());if(backup.version!==1||backup.collection!==collection||!backup.records||Array.isArray(backup.records))throw Error('Copia incompatible.');
-      const safeKey=/^(?:c:seed:[0-9]+:[a-z0-9-]+|c:external:[a-z0-9_-]+|b:[a-z0-9_-]+:[a-z0-9_-]+)$/;
+    try{const backup=JSON.parse(await file.text());if(![1,2].includes(backup.version)||backup.collection!==collection||!backup.records||Array.isArray(backup.records))throw Error('Copia incompatible.');
       let count=0;
       for(const [key,v] of Object.entries(backup.records)){
-        if(safeKey.test(key)&&v&&/^\d{4}-\d\d-\d\d$/.test(v.date)){
+        if(validCostumeBackupKey(key)&&v&&/^\d{4}-\d\d-\d\d$/.test(v.date)){
           data.marks[key]={date:v.date,note:String(v.note||'').slice(0,240)};count++;
         }
       }

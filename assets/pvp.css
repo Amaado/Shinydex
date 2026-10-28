@@ -61,3 +61,10 @@
 @media(max-width:420px){.pvp-filterbar .select-wrap{min-width:100px}.pvp-target-card{padding:15px}.pvp-target-portrait{flex-basis:77px;width:77px;height:83px}.pvp-target-portrait img{width:73px;height:73px}.pvp-rank{font-size:9px}.pvp-state{font-size:8px;padding:4px 7px}.sidebar .nav-link{flex:1 1 30%}}
 
 .pvp-detail-heading{font-size:14px;margin:20px 0 8px}.pvp-details{display:grid;gap:8px;margin:0 0 20px}.pvp-detail-action{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #4d6863;background:#20352f;border-radius:8px;padding:13px;text-align:left}.pvp-detail-action strong{font-size:11px}.pvp-detail-action small{font-size:10px;color:#b7d0c4}.pvp-detail-action:hover{background:#29443a}
+
+/* Tres objetivos por destino: shiny, XXS y XXL. */
+.pvp-size-goals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:12px 0}
+.pvp-size-goal{min-width:0;padding:9px 4px;border:1px solid #455b66;border-radius:8px;color:#cfdee4;background:#202d34;font-size:11px;font-weight:700;transition:background .15s,border .15s}
+.pvp-size-goal:hover,.pvp-size-goal:focus-visible{border-color:#a3b7b5;background:#2b4148}
+.pvp-size-goal.done{border-color:#648d75;background:#254637;color:#c0f0ce}
+.pvp-size-goal.done:focus-visible{outline:2px solid #afebc1;outline-offset:2px}

@@ -1,6 +1,8 @@
 import {initVariantExplorer} from './variants.mjs';
+import {ShinydexAuth} from './auth.mjs';
 import {readSnapshots,botPvpRecords,botVariantRecords} from './bot-sync.mjs';
 import {GOALS,buildEntries,filterEntries,escapeHtml as esc,fold,makeCommand,toCsv} from './domain.mjs';
+import {PVP_SIZES,pvpVariantKey,pvpMarkValid,pvpCompletedSizes} from './extra-goals.mjs';
 
 const $=id=>document.getElementById(id);
 const raw=window.POKEDEX_CONFIG||{};
@@ -22,15 +24,25 @@ function validConfig(){
   return true;
 }
 const configured=validConfig();
+const auth=configured?new ShinydexAuth({url:config.supabaseUrl,key:config.publishableKey}):null;
+let initCompleted=false;
 const cacheKey=`shinydex:v1:${config.supabaseUrl}:${config.collection}`;
 const pvpCacheKey=`shinydex:pvp:v1:${config.supabaseUrl}:${config.collection}`;
 const LEAGUES=['great','ultra','baby'];
 const LEAGUE_LABELS={great:'Superliga',ultra:'Ultraliga',baby:'Baby League'};
 const LEAGUE_CHIPS={great:'Super',ultra:'Ultra',baby:'Baby'};
-function pvpKey(league,target){return `${league}:${target.destination.key}`;}
+function pvpKey(league,target,size=''){return pvpVariantKey(league,target.destination.key,size);}
 function pvpItem(league,key){return state.pvpLookup.get(`${league}:${key}`);}
-function pvpRecord(league,target){const key=pvpKey(league,target);return state.pvpMarks[key]||state.botPvpMarks[key];}
-function pvpDone(league,target){return Boolean(pvpRecord(league,target));}
+function pvpRecord(league,target,size=''){
+  const key=pvpKey(league,target,size);
+  if(size)return state.pvpMarks[key]||state.botPvpMarks[key];
+  return state.pvpMarks[key]||state.botPvpMarks[key]
+    ||state.pvpMarks[pvpKey(league,target,'XXS')]||state.botPvpMarks[pvpKey(league,target,'XXS')]
+    ||state.pvpMarks[pvpKey(league,target,'XXL')]||state.botPvpMarks[pvpKey(league,target,'XXL')];
+}
+function pvpDone(league,target,size=''){return Boolean(pvpRecord(league,target,size));}
+function pvpProgress(league,target){return pvpCompletedSizes(league,target,state.pvpMarks,state.botPvpMarks).length;}
+function pvpSelection(){return $('pvpSizeFilter').value;}
 function pvpBadge(entry){
   if(!state.pvpData)return '';
   const chips=[];
@@ -43,19 +55,16 @@ function pvpBadge(entry){
   }
   return chips.length?`<div class="pvp-chips">${chips.join('')}</div>`:'';
 }
-function pvpMarkValid(league,target,value){
-  if(!value||typeof value!=='object'||!Array.isArray(value.iv)||value.iv.length!==3)return false;
-  if(value.iv.some((iv,i)=>iv!==target.iv[i]))return false;
-  return target.candidates.some(candidate=>candidate.key===value.candidateKey);
-}
 function loadPvpMarks(){
   try{
     const data=JSON.parse(localStorage.getItem(pvpCacheKey)||'{}');
     const records=data?.version===1&&data?.records&&typeof data.records==='object'?data.records:{};
     state.pvpMarks={};
     for(const [key,record] of Object.entries(records)){
-      const target=state.pvpLookup.get(key);
-      if(target&&pvpMarkValid(target.league,target,record))state.pvpMarks[key]=record;
+      const size=key.endsWith('#XXS')?'XXS':key.endsWith('#XXL')?'XXL':'';
+      const base=size?key.slice(0,-(size.length+1)):key;
+      const target=state.pvpLookup.get(base);
+      if(target&&pvpMarkValid(target,record,size))state.pvpMarks[key]=record;
     }
   }catch{state.pvpMarks={};}
 }
@@ -75,8 +84,9 @@ async function pvpImport(file){
     if(backup.version!==1||backup.collection!==config.collection||!backup.records||typeof backup.records!=='object'||Array.isArray(backup.records))throw new Error('El archivo no corresponde a esta colección o versión.');
     const accepted={};let rejected=0;
     for(const [key,record] of Object.entries(backup.records)){
-      const item=state.pvpLookup.get(key);
-      if(item&&pvpMarkValid(item.league,item,record))accepted[key]=record;else rejected++;
+      const size=key.endsWith('#XXS')?'XXS':key.endsWith('#XXL')?'XXL':'';
+      const item=state.pvpLookup.get(size?key.slice(0,-size.length-1):key);
+      if(item&&pvpMarkValid(item,record,size))accepted[key]=record;else rejected++;
     }
     const count=Object.keys(accepted).length;
     if(!confirm(`Importar ${count} objetivos válidos (${rejected} descartados)? Se mantendrán los objetivos locales que no estén en el archivo.`))return;
@@ -140,7 +150,7 @@ function filteredCatalogEntries(){
 
 function render(){
   state.entries=buildEntries(state.catalog,state.snapshot||{});updateStats();
-  if(state.pvpData)for(const league of LEAGUES)$(league+'NavCount').textContent=String(state.pvpData.leagues[league].filter(t=>pvpDone(league,t)).length);
+  if(state.pvpData)for(const league of LEAGUES)$(league+'NavCount').textContent=String(state.pvpData.leagues[league].reduce((n,t)=>n+pvpProgress(league,t),0));
   if(state.view==='activity'){renderActivity();return;}
   if(state.view==='variants'){return;}
   if(LEAGUES.includes(state.view)){renderPvp();return;}
@@ -200,7 +210,7 @@ function setView(view){
   $('activitySection').hidden=view!=='activity';$('collectionSection').hidden=view==='activity'||isPvp||isVariant;
   $('pvpSection').hidden=!isPvp;$('variantSection').hidden=!isVariant;document.querySelector('.stats').hidden=isPvp||isVariant;
   if(isPvp||isVariant){$('registerButton').hidden=true;$('exportButton').hidden=true;}else{$('registerButton').hidden=false;$('exportButton').hidden=false;}
-  if(isPvp){state.pvpLimit=24;$('pvpSearch').value='';$('pvpStateFilter').value='all';$('pvpSort').value='rank';}
+  if(isPvp){state.pvpLimit=24;$('pvpSearch').value='';$('pvpStateFilter').value='all';$('pvpSizeFilter').value='all';$('pvpSort').value='rank';}
   render();
 }
 function updateStatusTabs(){for(const b of document.querySelectorAll('[data-status]')){const selected=b.dataset.status===state.status;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));}}
@@ -221,7 +231,8 @@ function filteredPvpTargets(league){
   const targets=state.pvpData?.leagues?.[league]||[];
   const query=fold($('pvpSearch').value.trim());
   const status=$('pvpStateFilter').value;
-  let entries=targets.filter(t=>(!query||fold([t.destination.name,t.rank,...t.candidates.map(c=>c.name)].join(' ')).includes(query))&&(status==='all'||pvpDone(league,t)));
+  const size=pvpSelection();
+  let entries=targets.filter(t=>(!query||fold([t.destination.name,t.rank,...t.candidates.map(c=>c.name)].join(' ')).includes(query))&&(status==='all'||(size==='all'?pvpProgress(league,t)>0:pvpDone(league,t,size))));
   if($('pvpSort').value==='name')entries=entries.slice().sort((a,b)=>a.destination.name.localeCompare(b.destination.name,'es'));
   if($('pvpSort').value==='dex')entries=entries.slice().sort((a,b)=>a.destination.dexId-b.destination.dexId||a.rank-b.rank);
   return entries;
@@ -230,22 +241,23 @@ function filteredPvpTargets(league){
 function renderPvp(){
   const league=state.view;
   const targets=state.pvpData?.leagues?.[league]||[];
-  const done=targets.filter(t=>pvpDone(league,t)).length;
-  $('greatNavCount').textContent=state.pvpData?String(state.pvpData.leagues.great.filter(t=>pvpDone('great',t)).length):'—';
-  $('ultraNavCount').textContent=state.pvpData?String(state.pvpData.leagues.ultra.filter(t=>pvpDone('ultra',t)).length):'—';
-  $('babyNavCount').textContent=state.pvpData?String(state.pvpData.leagues.baby.filter(t=>pvpDone('baby',t)).length):'—';
+  const done=targets.reduce((n,t)=>n+pvpProgress(league,t),0);
+  const goalTotal=targets.length*PVP_SIZES.length;
+  $('greatNavCount').textContent=state.pvpData?String(state.pvpData.leagues.great.reduce((n,t)=>n+pvpProgress('great',t),0)):'—';
+  $('ultraNavCount').textContent=state.pvpData?String(state.pvpData.leagues.ultra.reduce((n,t)=>n+pvpProgress('ultra',t),0)):'—';
+  $('babyNavCount').textContent=state.pvpData?String(state.pvpData.leagues.baby.reduce((n,t)=>n+pvpProgress('baby',t),0)):'—';
   $('pvpSectionTitle').textContent=LEAGUE_LABELS[league];
   $('pvpDescription').textContent=league==='baby'
-    ? `${targets.length} objetivos de Little Cup (500 PC). Captura directa del Pokémon shiny, sin evolucionar; IV y nivel según el CSV.`
-    : `${targets.length} destinos del CSV. El objetivo se registra una sola vez, aunque haya varias preevoluciones capturables.`;
-  $('pvpDone').textContent=`${done} / ${targets.length}`;
-  $('pvpPercent').textContent=`${targets.length?Math.round(done*100/targets.length):0} % completado`;
-  $('pvpProgressBar').style.width=`${targets.length?done*100/targets.length:0}%`;
+    ? `${targets.length} destinos de Little Cup (500 PC). Cada uno tiene 3 objetivos: shiny, XXS y XXL. Captura directa, sin evolucionar.`
+    : `${targets.length} destinos del CSV con 3 objetivos independientes por destino: shiny, XXS y XXL. Las preevoluciones no suman destinos.`;
+  $('pvpDone').textContent=`${done} / ${goalTotal}`;
+  $('pvpPercent').textContent=`${goalTotal?Math.round(done*100/goalTotal):0} % completado`;
+  $('pvpProgressBar').style.width=`${goalTotal?done*100/goalTotal:0}%`;
   const entries=filteredPvpTargets(league);
   const shown=entries.slice(0,state.pvpLimit);
   $('pvpCatalog').innerHTML=shown.map(t=>pvpCard(league,t)).join('');
   $('pvpEmpty').hidden=entries.length!==0;
-  $('pvpResults').textContent=`${entries.length} objetivos · ${done} registrados de ${targets.length}`;
+  $('pvpResults').textContent=`${entries.length} destinos · ${done} de ${goalTotal} variantes registradas`;
   $('pvpShown').textContent=entries.length?`${shown.length} de ${entries.length} objetivos`:'';
   $('pvpMore').hidden=shown.length>=entries.length;
 }
@@ -262,7 +274,7 @@ function showMorePvp(){
 }
 
 function pvpCard(league,target){
-  const marked=pvpDone(league,target),record=pvpRecord(league,target);
+  const marked=pvpProgress(league,target)>0,record=pvpRecord(league,target);
   const {destination:dest,iv,rank,candidates,level}=target;
   const photo=dest.form==='normal'?`<img src="${esc(dest.dexId<=24?`./assets/sprites/${dest.dexId}.png`:`${HOME}${dest.dexId}.png`)}" alt="Imagen shiny de ${esc(dest.name)}" loading="lazy" width="102" height="102" data-dex="${dest.dexId}" data-normal="true">`:'<span class="pvp-form-image" aria-label="Forma especial, sin imagen verificada">✧</span>';
   return `<article class="pvp-target-card ${marked?'pvp-target-completed':''}">
@@ -270,16 +282,20 @@ function pvpCard(league,target){
     <div class="pvp-target-main"><div class="pvp-target-portrait">${photo}</div><div><span class="dex-number">#${String(dest.dexId).padStart(4,'0')}</span><h3>${esc(dest.name)}</h3><p>Pokémon destino</p></div></div>
     <div class="pvp-specs"><span><small>IV objetivo</small><strong>${iv.join(' / ')}</strong></span><span><small>Nivel del destino</small><strong>${Number.isInteger(level)?level:String(level).replace('.',',')}</strong></span></div>
     <div class="pvp-candidate-list"><strong>${league==='baby'?'Captura directa del CSV':'Candidatos de captura del CSV'}</strong><div>${candidates.map(c=>`<span>${esc(c.name)}</span>`).join('')}</div></div>
-    ${marked?`<div class="pvp-record">✓ ${esc(record.candidateName||'Shiny registrado')} · ${iv.join('/')} · ${esc(dateLabel(record.date))}</div>`:''}
-    <button class="button ${marked?'button-quiet':'button-primary'} pvp-card-action" data-pvp-open="${esc(league)}" data-pvp-dest="${esc(dest.key)}">${marked?'Ver o modificar registro':'Registrar shiny conseguido'}</button>
+    <div class="pvp-size-goals" aria-label="Variantes shiny por tamaño">
+      ${PVP_SIZES.map(size=>`<button type="button" class="pvp-size-goal ${pvpDone(league,target,size)?'done':''}" data-pvp-open="${esc(league)}" data-pvp-dest="${esc(dest.key)}" data-pvp-size="${esc(size)}" aria-label="${size||'Shiny, cualquier tamaño'}: ${pvpDone(league,target,size)?'conseguido':'sin registrar'}">${pvpDone(league,target,size)?'✓ ':''}${size||'Shiny'}</button>`).join('')}
+    </div>
+    ${marked?`<div class="pvp-record">${pvpProgress(league,target)} / 3 variantes · ${esc(record.candidateName||'Shiny registrado')} · ${esc(dateLabel(record.date))}</div>`:''}
+    <button class="button ${marked?'button-quiet':'button-primary'} pvp-card-action" data-pvp-open="${esc(league)}" data-pvp-dest="${esc(dest.key)}" data-pvp-size="">${marked?'Ver o añadir captura':'Registrar shiny conseguido'}</button>
   </article>`;
 }
-function openPvpDialog(league,destinationKey){
+function openPvpDialog(league,destinationKey,sizeGoal=''){
   const target=pvpItem(league,destinationKey);if(!target)return;
   if($('detailDialog').open)$('detailDialog').close();
-  state.pvpSelected={league,destinationKey};
-  const record=pvpRecord(league,target);
-  $('pvpDialogTitle').textContent=`${LEAGUE_LABELS[league]} · ${target.destination.name}`;
+  if(!PVP_SIZES.includes(sizeGoal))sizeGoal='';
+  state.pvpSelected={league,destinationKey,sizeGoal};
+  const record=pvpRecord(league,target,sizeGoal);
+  $('pvpDialogTitle').textContent=`${LEAGUE_LABELS[league]} · ${target.destination.name} · ${sizeGoal||'Shiny'}`;
   $('pvpDialogDescription').textContent=league==='baby'
     ? `Puesto #${target.rank} de Little Cup (500 PC). Registra un ${target.destination.name} shiny directamente, con los IV del CSV, sin evolucionarlo.`
     : `Puesto #${target.rank}. Registra un shiny de la lista que puedas evolucionar hasta ${target.destination.name} (o el propio destino).`;
@@ -290,13 +306,15 @@ function openPvpDialog(league,destinationKey){
     ? `IV requeridos: ${target.iv.join('/')} · Nivel objetivo de captura: ${target.level} · Máximo 500 PC (no verificado por la web)`
     : `IV requeridos: ${target.iv.join('/')} · Nivel objetivo tras evolucionar: ${target.level}`;
   for(const [id,i] of [['pvpAtk',0],['pvpDef',1],['pvpHp',2]])$(id).value=record?String(record.iv[i]):'';
+  $('pvpSize').value=sizeGoal||record?.size||'';
+  $('pvpSize').disabled=Boolean(sizeGoal);
   $('pvpConfirm').checked=false;
-  $('pvpRemove').hidden=!state.pvpMarks[pvpKey(league,target)];
+  $('pvpRemove').hidden=!state.pvpMarks[pvpKey(league,target,sizeGoal)];
   if(record?.source==='bot')$('pvpDialogDescription').textContent+=' Captura sincronizada desde Discord. Para deshacerla utiliza el bot.';
   openDialog('pvpDialog');
 }
 function savePvpRecord(event){
-  event.preventDefault();const {league,destinationKey}=state.pvpSelected||{};
+  event.preventDefault();const {league,destinationKey,sizeGoal=''}=state.pvpSelected||{};
   const target=pvpItem(league,destinationKey);if(!target)return;
   const iv=['pvpAtk','pvpDef','pvpHp'].map(id=>$(id).value.trim());
   if(iv.some(v=>!/^\d{1,2}$/.test(v))){notify('Introduce los tres IV en formato 0–15.');return;}
@@ -304,15 +322,23 @@ function savePvpRecord(event){
   if(parsed.some((v,i)=>v!==target.iv[i])){notify(`Estos IV no coinciden con el objetivo: ${target.iv.join('/')}. No se ha registrado.`);return;}
   const candidate=target.candidates.find(c=>c.key===$('pvpCandidate').value);
   if(!candidate||!$('pvpConfirm').checked){notify('Elige un Pokémon válido y confirma que es shiny.');return;}
-  const key=pvpKey(league,target),previous=state.pvpMarks[key];
-  state.pvpMarks[key]={candidateKey:candidate.key,candidateName:candidate.name,iv:parsed,date:previous?.date||new Date().toISOString()};
+  const size=$('pvpSize').value;
+  if(sizeGoal&&size!==sizeGoal){notify('Selecciona el tamaño exacto del objetivo.');return;}
+  const key=pvpKey(league,target,sizeGoal),previous=state.pvpMarks[key];
+  const value={candidateKey:candidate.key,candidateName:candidate.name,iv:parsed,size,date:previous?.date||new Date().toISOString()};
+  state.pvpMarks[key]=value;
+  if(size==='XXS'||size==='XXL'){
+    state.pvpMarks[pvpKey(league,target,size)]={...value};
+  }
+  // Una captura pequeña o grande también cumple el shiny genérico.
+  if(!state.pvpMarks[pvpKey(league,target)])state.pvpMarks[pvpKey(league,target)]={...value};
   if(savePvpMarks()){$('pvpDialog').close();render();notify('Objetivo PvP registrado en este navegador.');}
 }
 function removePvpRecord(){
-  const {league,destinationKey}=state.pvpSelected||{};
+  const {league,destinationKey,sizeGoal=''}=state.pvpSelected||{};
   const target=pvpItem(league,destinationKey);if(!target)return;
   if(!confirm(`¿Quitar el registro PvP de ${target.destination.name} en ${LEAGUE_LABELS[league]}?`))return;
-  delete state.pvpMarks[pvpKey(league,target)];
+  delete state.pvpMarks[pvpKey(league,target,sizeGoal)];
   if(savePvpMarks()){$('pvpDialog').close();render();notify('Registro PvP eliminado.');}
 }
 
@@ -343,7 +369,9 @@ async function sync(manual=false){
   state.fetching=true;state.lastAttempt=Date.now();syncState('Sincronizando…');$('syncButton').disabled=true;
   const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),15000);
   try{
-    const {snapshot,parts,warnings}=await readSnapshots({url:config.supabaseUrl,key:config.publishableKey,collection:config.collection,signal:controller.signal,previous:state.sources});
+    const accessToken=auth?await auth.token():null;
+    if(auth&&!accessToken){lockAuth('Tu sesión ha caducado. Vuelve a iniciar sesión.');return;}
+    const {snapshot,parts,warnings}=await readSnapshots({url:config.supabaseUrl,key:config.publishableKey,collection:config.collection,signal:controller.signal,previous:state.sources,accessToken});
     const data=assertSnapshot(snapshot);
     state.snapshot=data;state.sources=parts;state.hasData=true;state.lastUpdated=Date.now();state.failures=warnings.length?state.failures+1:0;
     updateBotProgress();
@@ -358,7 +386,7 @@ async function sync(manual=false){
     notice(message+(state.hasData?` Últimos datos: ${dateLabel(new Date(state.lastUpdated),true)}.`:''));
   }finally{clearTimeout(timeout);state.fetching=false;$('syncButton').disabled=false;schedule();}
 }
-function schedule(){clearTimeout(pollTimer);if(configured&&!document.hidden)pollTimer=setTimeout(()=>sync(),Math.min(600,config.refreshSeconds*2**Math.min(state.failures,3))*1000);}
+function schedule(){clearTimeout(pollTimer);if(configured&&(!auth||auth.value)&&!document.hidden)pollTimer=setTimeout(()=>sync(),Math.min(600,config.refreshSeconds*2**Math.min(state.failures,3))*1000);}
 
 function updateBotProgress(){
   const captures=state.snapshot?.bot_progress||[];
@@ -376,9 +404,9 @@ $('search').addEventListener('input',()=>{state.limit=24;render();});
 $('resetFilters').addEventListener('click',resetFilters);
 $('loadMore').addEventListener('click',showMoreCatalog);
 for(const [id,layout] of [['gridView','grid'],['tableView','table']])$(id).addEventListener('click',()=>{state.layout=layout;for(const [other,l] of [['gridView','grid'],['tableView','table']]){$(other).classList.toggle('selected',l===layout);$(other).setAttribute('aria-pressed',String(l===layout));}render();});
-document.addEventListener('click',e=>{const pvp=e.target.closest('[data-pvp-open]');if(pvp)openPvpDialog(pvp.dataset.pvpOpen,pvp.dataset.pvpDest);const detail=e.target.closest('[data-detail]');if(detail)openDetail(detail.dataset.detail);const reg=e.target.closest('[data-register]');if(reg)registerFor(reg.dataset.register);});
+document.addEventListener('click',e=>{const pvp=e.target.closest('[data-pvp-open]');if(pvp)openPvpDialog(pvp.dataset.pvpOpen,pvp.dataset.pvpDest,pvp.dataset.pvpSize||'');const detail=e.target.closest('[data-detail]');if(detail)openDetail(detail.dataset.detail);const reg=e.target.closest('[data-register]');if(reg)registerFor(reg.dataset.register);});
 $('registerButton').addEventListener('click',()=>registerFor());
-for(const id of ['pvpSearch','pvpStateFilter','pvpSort'])$(id).addEventListener(id==='pvpSearch'?'input':'change',()=>{state.pvpLimit=24;render();});
+for(const id of ['pvpSearch','pvpStateFilter','pvpSizeFilter','pvpSort'])$(id).addEventListener(id==='pvpSearch'?'input':'change',()=>{state.pvpLimit=24;render();});
 $('pvpMore').addEventListener('click',showMorePvp);
 // Precarga cuando el botón se aproxima al área visible (600 px antes).
 // El usuario puede pulsar cualquiera de los botones si falla IntersectionObserver.
@@ -415,7 +443,9 @@ document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','SELECT','TEXT
 document.addEventListener('visibilitychange',()=>{if(document.hidden)clearTimeout(pollTimer);else if(Date.now()-state.lastAttempt>=config.refreshSeconds*1000)sync();else schedule();});
 window.addEventListener('online',()=>sync());
 
-async function init(){
+async function initCatalog(){
+  if(initCompleted)return;
+  initCompleted=true;
   try{
     const [response,pvpResponse]=await Promise.all([fetch('./assets/catalog.json'),fetch('./assets/pvp-targets.json')]);
     if(!response.ok)throw new Error('No se pudo cargar el catálogo.');state.catalog=await response.json();
@@ -431,4 +461,50 @@ async function init(){
     render();await sync();
   }catch(error){notice(error.message+' Abre la web desde GitHub Pages o un servidor HTTP local.');syncState('Catálogo no disponible','error');$('catalog').setAttribute('aria-busy','false');$('resultCount').textContent='Catálogo no disponible';}
 }
-await init();
+function authMessage(text='',error=false){$('authMessage').textContent=text;$('authMessage').hidden=!text;$('authMessage').classList.toggle('error',error);}
+function authTab(which){
+  const login=which==='login';$('authLoginForm').hidden=!login;$('authRegisterForm').hidden=login;
+  for(const [id,on] of [['authLoginTab',login],['authRegisterTab',!login]]){$(id).classList.toggle('selected',on);$(id).setAttribute('aria-pressed',String(on));}
+  authMessage();
+}
+function lockAuth(message=''){
+  document.body.classList.add('auth-locked');$('authScreen').hidden=false;
+  $('authLogout').hidden=true;$('authAccount').textContent='';
+  clearTimeout(pollTimer);
+  state.snapshot=null;state.sources={};state.botPvpMarks={};state.hasData=false;
+  state.variantExplorer?.setBotMarks({});authTab('login');authMessage(message,Boolean(message));
+}
+async function unlockAuth(){
+  document.body.classList.remove('auth-locked');$('authScreen').hidden=true;
+  $('authLogout').hidden=!auth;$('authAccount').textContent=auth?.value?.email||'';
+  await initCatalog();
+  if(initCompleted&&state.catalog.length&&state.hasData===false&&configured)await sync();
+}
+$('authLoginTab').addEventListener('click',()=>authTab('login'));
+$('authRegisterTab').addEventListener('click',()=>authTab('register'));
+$('authLoginForm').addEventListener('submit',async e=>{
+  e.preventDefault();if(!auth)return;
+  const button=$('authLoginSubmit');button.disabled=true;authMessage('Comprobando credenciales…');
+  try{await auth.signIn($('authLoginEmail').value,$('authLoginPassword').value,$('authRemember').checked);$('authLoginPassword').value='';await unlockAuth();}
+  catch(error){authMessage(error.message,true);}
+  finally{button.disabled=false;}
+});
+$('authRegisterForm').addEventListener('submit',async e=>{
+  e.preventDefault();if(!auth)return;
+  const button=$('authRegisterSubmit');button.disabled=true;authMessage('Registrando cuenta…');
+  try{
+    const result=await auth.signUp($('authRegisterEmail').value,$('authRegisterPassword').value,false);
+    $('authRegisterPassword').value='';
+    if(result.signedIn)await unlockAuth();
+    else authMessage('Cuenta solicitada. Revisa tu correo para confirmar la dirección si Supabase requiere verificación. Después inicia sesión.');
+  }catch(error){authMessage(error.message,true);}
+  finally{button.disabled=false;}
+});
+$('authLogout').addEventListener('click',async()=>{if(auth)await auth.signOut();lockAuth();});
+if(auth){
+  lockAuth();
+  try{if(await auth.restore())await unlockAuth();}catch(error){lockAuth('No se pudo restaurar la sesión. Vuelve a entrar.');}
+}else{
+  $('authScreen').hidden=true;document.body.classList.remove('auth-locked');
+  await initCatalog();
+}

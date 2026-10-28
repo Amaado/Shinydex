@@ -1,4 +1,5 @@
 // Integra la fuente del bot con la colección anterior sin sustituir su esquema.
+import {goalIdsForCapture,costumeGoalKey,pvpVariantKey} from './extra-goals.mjs';
 export function validateSnapshot(data,collection){
   if(!data||data.version!==1||data.collection!==collection||!Array.isArray(data.entries)||!Array.isArray(data.recent_captures)||!Number.isFinite(data.captures_total))throw Error('Formato de colección no válido. Revisa el SQL de conexión.');
   if(!data.collection_available)throw Error('La colección no existe o su lectura pública está desactivada.');
@@ -26,9 +27,10 @@ export function mergeSnapshots(parts,collection){
     bot_progress:parts.shinydex_bot_snapshot?.bot_progress||[]};
 }
 
-export async function readSnapshots({url,key,collection,signal,previous={},fetcher=fetch}){
+export async function readSnapshots({url,key,collection,signal,previous={},fetcher=fetch,accessToken=null}){
   const headers={apikey:key,'Content-Type':'application/json'};
-  if(key.startsWith('eyJ'))headers.Authorization=`Bearer ${key}`;
+  if(accessToken)headers.Authorization=`Bearer ${accessToken}`;
+  else if(key.startsWith('eyJ'))headers.Authorization=`Bearer ${key}`;
   const results=await Promise.all(['pokedex_snapshot','shinydex_bot_snapshot'].map(async rpc=>{
     try{
       const response=await fetcher(`${url}/rest/v1/rpc/${rpc}`,{method:'POST',headers,
@@ -57,10 +59,14 @@ export function botPvpRecords(captures,pvpData){
       &&typeof c.level==='number'&&c.level>=1&&c.level<=Math.floor(target.level)
       &&target.candidates.some(candidate=>candidate.dexId===c.dex_id&&candidate.form===c.form));
     matching.sort((a,b)=>String(a.caught_at).localeCompare(String(b.caught_at)));
-    const capture=matching[0];if(!capture)continue;
-    const candidate=target.candidates.find(c=>c.dexId===capture.dex_id&&c.form===capture.form);
-    marks[`${league}:${target.destination.key}`]={candidateKey:candidate.key,candidateName:candidate.name,
-      iv:[capture.attack,capture.defense,capture.stamina],date:capture.caught_at,source:'bot'};
+    for(const capture of matching){
+      const candidate=target.candidates.find(c=>c.dexId===capture.dex_id&&c.form===capture.form);
+      const record={candidateKey:candidate.key,candidateName:candidate.name,
+        iv:[capture.attack,capture.defense,capture.stamina],size:capture.size||'',date:capture.caught_at,source:'bot'};
+      const keys=[pvpVariantKey(league,target.destination.key)];
+      if(capture.size==='XXS'||capture.size==='XXL')keys.push(pvpVariantKey(league,target.destination.key,capture.size));
+      for(const key of keys)if(!marks[key])marks[key]={...record};
+    }
   }
   return marks;
 }
@@ -68,10 +74,21 @@ export function botPvpRecords(captures,pvpData){
 export function botVariantRecords(captures){
   const marks={};
   for(const c of captures){
-    // Única equivalencia de disfraz explícita ya contrastada en el código del bot.
-    if(c.shiny===true&&c.dex_id===41&&c.form==='halloween-2026-01'&&!c.costume){
-      const key='c:seed:41:sombrerodecopadehalloween2026';
-      if(!marks[key]||c.caught_at<marks[key].date)marks[key]={date:c.caught_at.slice(0,10),note:'Captura confirmada en Discord',source:'bot'};
+    // Solo el mapeo del Zubat de Halloween 2026 está confirmado en este paquete.
+    // No asociar automáticamente códigos numéricos de disfraz ambiguos ni fondos.
+    if(c.shiny!==true||c.dex_id!==41||c.form!=='halloween-2026-01'||c.costume)continue;
+    const base='c:seed:41:sombrerodecopadehalloween2026';
+    const date=String(c.caught_at||'').slice(0,10);
+    if(!/^\d{4}-\d\d-\d\d$/.test(date))continue;
+    const goals=goalIdsForCapture(c);
+    if(!goals.length){
+      // Una captura antigua puede carecer de IV: se conserva como registro sin categoría.
+      if(!marks[base])marks[base]={date,note:'Captura desde Discord sin atributos completos',source:'bot'};
+      continue;
+    }
+    for(const goal of goals){
+      const key=costumeGoalKey(base,goal);
+      if(!marks[key]||date<marks[key].date)marks[key]={date,note:'Captura confirmada en Discord',source:'bot'};
     }
   }
   return marks;

@@ -44,7 +44,7 @@ Dirección habitual: `https://TU_USUARIO.github.io/pokedex-shiny/`.
 
 Abre Supabase → SQL Editor y ejecuta **solo consultas de lectura** del archivo `COMPROBAR_SEGURIDAD_SUPABASE.sql`. Debes verificar los resultados: **RLS activado** donde corresponda, `anon` sin permisos de inserción/modificación/borrado de capturas y función RPC `pokedex_snapshot` expuesta solo para lectura del contenido que deseas hacer público. Comprueba las políticas; las consultas de auditoría no sustituyen las pruebas reales.
 
-**La web de esta versión tiene lectura pública**: los datos devueltos por `pokedex_snapshot`, incluidos los alias de cuentas o la actividad si los incorpora, serán accesibles a cualquiera que tenga el enlace. Para una Pokédex privada necesitas autenticación o un backend que controle el acceso.
+**Acceso y privacidad (actualización 28-10-2026):** se han añadido pantallas de registro, inicio de sesión y persistencia de sesión mediante Supabase Auth. Sin embargo, `pokedex_snapshot` y las RPC anteriores pueden seguir siendo públicas en el backend. La pantalla de acceso no es una garantía de privacidad ni aísla colecciones por usuario: hay que proteger las RPC, autorizar usuarios y revisar RLS. Véase `../NOVEDADES_Y_PASOS.md`.
 
 El bot de Discord debe conservar la clave secreta solo en su servidor o en sus variables de entorno. Si algún secreto real se ha publicado alguna vez, hay que revocarlo/rotarlo: borrarlo del commit actual no lo elimina del historial.
 

@@ -47,3 +47,13 @@
 .variant-filters .variant-reset{min-height:40px;align-self:stretch;white-space:nowrap}
 .variant-card-top:has(.variant-type:only-child){justify-content:flex-start}
 @media(max-width:730px){.variant-filters .variant-reset{width:100%}}
+
+/* Las 8 categorías de cada disfraz se muestran también con fondo especial. */
+.costume-goal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:9px 0}
+.costume-goal{display:flex;justify-content:center;align-items:center;min-height:30px;background:#253138;color:#c7d6df;border:1px solid #445761;border-radius:7px;padding:5px;font-size:10px;font-weight:650;text-align:center;white-space:normal}
+.costume-goal:nth-child(n+4){border-color:#5a4c62}
+.costume-goal:hover,.costume-goal:focus-visible{background:#32444b;border-color:#a1c1af}
+.costume-goal.done{background:#234936;color:#c8edd3;border-color:#648e75}
+.variant-legacy{font-size:10px;line-height:1.5;padding:9px;border:1px solid #8b7652;border-radius:7px;color:#e2d1ae;background:#383121}
+#variantRemoveWrap{margin-top:10px}
+#variantRemoveGoal{margin:6px 0}
