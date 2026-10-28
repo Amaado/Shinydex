@@ -69,3 +69,7 @@ Para uso local, copia `config.example.js` a `config.js`, rellena solo la URL y l
 - `index.html`, `styles.css`, `js/`, `assets/`: aplicación original.
 
 **Nota**: El `supabase/schema.sql` al que se refiere la instalación original no estaba incluido en el ZIP recibido; la estructura de la base de datos no ha podido auditarse desde estos archivos. Datos de catálogo y sprites: PokéAPI. Proyecto no oficial.
+
+## Disfraces y fondos (actualización de octubre de 2026)
+
+Se ha incorporado un catálogo de Pokémon con disfraz, con fondos especiales o de ubicación, y con ambas características simultáneamente. Las fichas y fondos se apoyan en fuentes externas contrastadas. El progreso se registra localmente en el navegador, con exportación/importación JSON. Véase [README_VARIANTES.md](README_VARIANTES.md) para instrucciones, fuentes, alcance y limitaciones. Esta modificación no concede escritura pública en Supabase.

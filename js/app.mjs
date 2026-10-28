@@ -1,3 +1,4 @@
+import {initVariantExplorer} from './variants.mjs';
 import {GOALS,buildEntries,filterEntries,escapeHtml as esc,fold,makeCommand,toCsv} from './domain.mjs';
 
 const $=id=>document.getElementById(id);
@@ -5,7 +6,7 @@ const raw=window.POKEDEX_CONFIG||{};
 if(typeof raw.title==='string'&&raw.title.trim())document.title=raw.title.slice(0,60);
 const config={supabaseUrl:String(raw.supabaseUrl||'').replace(/\/$/,''),publishableKey:String(raw.publishableKey||''),collection:String(raw.collection||'principal'),refreshSeconds:Math.max(60,Math.min(600,Number(raw.refreshSeconds)||60))};
 const HOME='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/shiny/';
-const state={catalog:[],entries:[],snapshot:null,pvpData:null,pvpMarks:{},pvpLookup:new Map(),pvpLimit:24,pvpSelected:null,view:'collection',layout:'grid',status:'all',limit:24,hasData:false,fetching:false,lastUpdated:0,lastAttempt:0,failures:0};
+const state={catalog:[],entries:[],snapshot:null,pvpData:null,variantExplorer:null,pvpMarks:{},pvpLookup:new Map(),pvpLimit:24,pvpSelected:null,view:'collection',layout:'grid',status:'all',limit:24,hasData:false,fetching:false,lastUpdated:0,lastAttempt:0,failures:0};
 let pollTimer,toastTimer,configError='';
 
 function validConfig(){
@@ -97,6 +98,8 @@ function portrait(entry,detail=false){
 document.addEventListener('error',event=>{
   const img=event.target;
   if(!(img instanceof HTMLImageElement))return;
+  if(img.classList.contains('variant-scene')){img.remove();return;}
+  if(img.classList.contains('variant-mon')&&!img.dataset.retried){img.dataset.retried='1';img.src=img.dataset.fallback;const note=img.parentElement?.querySelector('.variant-picture-note');if(!note)img.insertAdjacentHTML('afterend','<span class="variant-picture-note">Imagen de especie (no del disfraz)</span>');return;}
   if(img.dataset.normal==='true'&&!img.dataset.retried){img.dataset.retried='1';img.src=`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/${img.dataset.dex}.png`;return;}
   const fallback=document.createElement('span');fallback.className='unknown-form';fallback.textContent='✧';fallback.setAttribute('aria-label','Imagen no disponible');img.replaceWith(fallback);
 },true);
@@ -135,6 +138,7 @@ function render(){
   state.entries=buildEntries(state.catalog,state.snapshot||{});updateStats();
   if(state.pvpData)for(const league of ['great','ultra'])$(league+'NavCount').textContent=String(state.pvpData.leagues[league].filter(t=>pvpDone(league,t)).length);
   if(state.view==='activity'){renderActivity();return;}
+  if(state.view==='variants'){return;}
   if(state.view==='great'||state.view==='ultra'){renderPvp();return;}
   const goal=$('goalFilter').value;
   const filtered=filteredCatalogEntries();
@@ -183,13 +187,15 @@ function renderActivity(){
 function setView(view){
   state.view=view;state.limit=24;
   for(const b of document.querySelectorAll('[data-view]')){b.classList.toggle('active',b.dataset.view===view);if(b.dataset.view===view)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');}
-  const title={collection:'Pokédex',pending:'Pendientes',activity:'Actividad',great:'Superliga',ultra:'Ultraliga'}[view];
+  const title={collection:'Pokédex',pending:'Pendientes',activity:'Actividad',great:'Superliga',ultra:'Ultraliga',variants:'Disfraces y fondos'}[view];
   $('pageTitle').textContent=title;$('breadcrumb').textContent=title;
   $('collectionHeading').textContent=view==='pending'?'Objetivos pendientes':'Pokémon';
   const isPvp=view==='great'||view==='ultra';
-  $('activitySection').hidden=view!=='activity';$('collectionSection').hidden=view==='activity'||isPvp;
-  $('pvpSection').hidden=!isPvp;document.querySelector('.stats').hidden=isPvp;
-  if(isPvp){$('registerButton').hidden=true;$('exportButton').hidden=true;}else{$('registerButton').hidden=false;$('exportButton').hidden=false;}
+  const isVariant=view==='variants';
+  state.variantExplorer?.show(isVariant);
+  $('activitySection').hidden=view!=='activity';$('collectionSection').hidden=view==='activity'||isPvp||isVariant;
+  $('pvpSection').hidden=!isPvp;$('variantSection').hidden=!isVariant;document.querySelector('.stats').hidden=isPvp||isVariant;
+  if(isPvp||isVariant){$('registerButton').hidden=true;$('exportButton').hidden=true;}else{$('registerButton').hidden=false;$('exportButton').hidden=false;}
   if(view==='pending'){state.status='all';$('goalFilter').value='';updateStatusTabs();}
   if(isPvp){state.pvpLimit=24;$('pvpSearch').value='';$('pvpStateFilter').value='all';$('pvpSort').value='rank';}
   render();
@@ -399,6 +405,7 @@ async function init(){
     if(state.pvpData.version!==1||!Array.isArray(state.pvpData.leagues.great)||!Array.isArray(state.pvpData.leagues.ultra))throw new Error('Datos PvP no válidos.');
     for(const league of ['great','ultra'])for(const target of state.pvpData.leagues[league])state.pvpLookup.set(pvpKey(league,target),target);
     loadPvpMarks();
+    state.variantExplorer=initVariantExplorer({catalog:state.catalog,collection:config.collection,supabaseUrl:config.supabaseUrl});
     $('goalFilter').insertAdjacentHTML('beforeend',GOALS.map(g=>`<option value="${g.id}">${esc(g.label)}</option>`).join(''));
     $('commandGoal').innerHTML=GOALS.map(g=>`<option value="${g.id}">${esc(g.label)}</option>`).join('');
     $('pokemonNames').innerHTML=state.catalog.map(p=>`<option value="${esc(p.name)}">#${p.id}</option>`).join('');
