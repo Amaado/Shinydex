@@ -1,12 +1,13 @@
 import {initVariantExplorer} from './variants.mjs';
+import {readSnapshots,botPvpRecords,botVariantRecords} from './bot-sync.mjs';
 import {GOALS,buildEntries,filterEntries,escapeHtml as esc,fold,makeCommand,toCsv} from './domain.mjs';
 
 const $=id=>document.getElementById(id);
 const raw=window.POKEDEX_CONFIG||{};
 if(typeof raw.title==='string'&&raw.title.trim())document.title=raw.title.slice(0,60);
-const config={supabaseUrl:String(raw.supabaseUrl||'').replace(/\/$/,''),publishableKey:String(raw.publishableKey||''),collection:String(raw.collection||'principal'),refreshSeconds:Math.max(60,Math.min(600,Number(raw.refreshSeconds)||60))};
+const config={supabaseUrl:String(raw.supabaseUrl||'').replace(/\/$/,''),publishableKey:String(raw.publishableKey||''),collection:String(raw.collection||'principal'),refreshSeconds:Math.max(10,Math.min(600,Number(raw.refreshSeconds)||10))};
 const HOME='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/shiny/';
-const state={catalog:[],entries:[],snapshot:null,pvpData:null,variantExplorer:null,pvpMarks:{},pvpLookup:new Map(),pvpLimit:24,pvpSelected:null,view:'collection',layout:'grid',status:'all',limit:24,hasData:false,fetching:false,lastUpdated:0,lastAttempt:0,failures:0};
+const state={catalog:[],entries:[],snapshot:null,sources:{},botPvpMarks:{},pvpData:null,variantExplorer:null,pvpMarks:{},pvpLookup:new Map(),pvpLimit:24,pvpSelected:null,view:'collection',layout:'grid',status:'all',limit:24,hasData:false,fetching:false,lastUpdated:0,lastAttempt:0,failures:0};
 let pollTimer,toastTimer,configError='';
 
 function validConfig(){
@@ -28,7 +29,8 @@ const LEAGUE_LABELS={great:'Superliga',ultra:'Ultraliga',baby:'Baby League'};
 const LEAGUE_CHIPS={great:'Super',ultra:'Ultra',baby:'Baby'};
 function pvpKey(league,target){return `${league}:${target.destination.key}`;}
 function pvpItem(league,key){return state.pvpLookup.get(`${league}:${key}`);}
-function pvpDone(league,target){return Boolean(state.pvpMarks[pvpKey(league,target)]);}
+function pvpRecord(league,target){const key=pvpKey(league,target);return state.pvpMarks[key]||state.botPvpMarks[key];}
+function pvpDone(league,target){return Boolean(pvpRecord(league,target));}
 function pvpBadge(entry){
   if(!state.pvpData)return '';
   const chips=[];
@@ -116,10 +118,10 @@ function card(entry){
 function table(entries){return `<div class="table-container"><table class="dex-table"><thead><tr><th scope="col">Pokémon / forma</th>${GOALS.map(g=>`<th scope="col" title="${esc(g.label)}">${esc(g.short)}</th>`).join('')}<th scope="col">Superliga</th><th scope="col">Ultraliga</th><th scope="col">Baby League</th></tr></thead><tbody>${entries.map(e=>`<tr><td><button class="table-pokemon" data-detail="${esc(e.key)}">${portrait(e)}<span><strong>#${String(e.id).padStart(4,'0')} ${esc(e.name)}</strong><small>${esc(e.form_label)}</small></span></button></td>${GOALS.map(g=>`<td>${e.completed.has(g.id)?'<span class="table-check" aria-label="Conseguido">✓</span>':`<span class="table-pending" aria-label="${state.hasData?'Sin registro':'Sin sincronizar'}">·</span>`}</td>`).join('')}${LEAGUES.map(league=>{const target=pvpItem(league,`${e.id}:${e.form_key==='normal'?'normal':e.form_key.replace(/^form:/,'').split('|')[0]}`);return `<td>${target?`<button class="pvp-table-link" data-pvp-open="${league}" data-pvp-dest="${esc(target.destination.key)}">${pvpDone(league,target)?'✓':'·'} #${target.rank}</button>`:'—'}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div>`;}
 
 function updateStats(){
-  $('navCount').textContent=state.hasData?String(state.entries.filter(e=>e.completed.size).length):'—';
+  $('navCount').textContent=state.hasData?String(state.entries.filter(e=>e.completed.size||e.capture_count).length):'—';
   $('catalogTotal').textContent=state.catalog.length.toLocaleString('es-ES');
   if(!state.hasData){for(const id of ['statCaptures','statSpecies','statGoals','statComplete'])$(id).textContent='—';$('statGoalTotal').textContent='';$('progressBar').style.width='0%';return;}
-  const count=state.entries.filter(e=>e.completed.size).length;
+  const count=state.entries.filter(e=>e.completed.size||e.capture_count).length;
   const goals=state.entries.reduce((n,e)=>n+e.completed.size,0);
   const complete=state.entries.filter(e=>e.completed.size===8).length;
   $('statCaptures').textContent=Number(state.snapshot.captures_total).toLocaleString('es-ES');
@@ -182,7 +184,7 @@ function renderActivity(){
   const byKey=new Map(state.entries.map(e=>[e.key,e]));
   $('activityList').innerHTML=recent.map(c=>{
     const entry=byKey.get(`${c.dex_id}:${c.form_key}`);
-    return `<article class="activity-row">${entry?portrait(entry):'<span class="activity-star" aria-hidden="true">✧</span>'}<div><strong>${esc(c.pokemon_name)} <span aria-hidden="true">✦</span></strong><p>${esc(c.form_label)} · ${esc(c.account)} · ${c.source==='manual'?'Registro manual':'ShinyChecker'}<br>${(c.goals||[]).map(g=>esc(GOALS.find(x=>x.id===g)?.short||g)).join(' &nbsp; / &nbsp; ')}</p></div><time datetime="${esc(c.caught_at)}">${esc(dateLabel(c.caught_at,true))}</time></article>`;
+    return `<article class="activity-row">${entry?portrait(entry):'<span class="activity-star" aria-hidden="true">✧</span>'}<div><strong>${esc(c.pokemon_name)} <span aria-hidden="true">✦</span></strong><p>${esc(c.form_label)} · ${esc(c.account)} · ${c.source==='manual'?'Registro manual':c.source==='shiny-sniper'?'Discord / Shiny Sniper':'ShinyChecker'}<br>${(c.goals||[]).map(g=>esc(GOALS.find(x=>x.id===g)?.short||g)).join(' &nbsp; / &nbsp; ')}</p></div><time datetime="${esc(c.caught_at)}">${esc(dateLabel(c.caught_at,true))}</time></article>`;
   }).join('');
 }
 
@@ -206,11 +208,12 @@ function resetFilters(){state.limit=24;state.status='all';for(const id of ['sear
 
 function openDetail(key){
   const entry=state.entries.find(e=>e.key===key);if(!entry)return;
+  state.detailKey=key;
   const goals=GOALS.map(g=>{const record=entry.goals.find(x=>x.id===g.id);return `<div class="detail-goal ${record?'done':''}"><span aria-hidden="true">${record?'✓':''}</span><div>${esc(g.label)}${record?`<small class="sr-only"> Primera captura ${esc(dateLabel(record.first_caught_at))}</small>`:''}</div><span>${state.hasData?(record?`${record.count} captura${record.count===1?'':'s'}`:'Sin registrar'):'Sin datos'}</span></div>`;}).join('');
   const pvpForm=entry.form_key==='normal'?'normal':entry.form_key.replace(/^form:/,'').split('|')[0];
   const pvpGoals=LEAGUES.map(league=>({league,target:pvpItem(league,`${entry.id}:${pvpForm}`)})).filter(x=>x.target);
   const pvpDetails=pvpGoals.length?`<h3 class="pvp-detail-heading">Objetivos PvP</h3><div class="pvp-details">${pvpGoals.map(({league,target})=>`<button class="pvp-detail-action" data-pvp-open="${league}" data-pvp-dest="${esc(target.destination.key)}"><strong>${esc(LEAGUE_LABELS[league])} · #${target.rank}</strong><small>IV ${target.iv.join('/')} · ${pvpDone(league,target)?'✓ Registrado':'Sin registrar'}</small></button>`).join('')}</div>`:'';
-  $('detailContent').innerHTML=`<button class="close-dialog aria-label="Cerrar">×</button><div class="detail-portrait">${portrait(entry,true)}</div><p class="detail-label">#${String(entry.id).padStart(4,'0')} · ${esc(entry.form_label)}</p><h2 id="detailTitle" class="detail-title">${esc(entry.name)}</h2><div class="detail-goals">${goals}</div>${pvpDetails}<button class="button button-primary detail-command" data-register="${esc(entry.key)}">Registrar una captura <span aria-hidden="true">＋</span></button><p class="field-note">Las condiciones de una captura se aplican a todas las categorías compatibles. Las formas se contabilizan por separado.</p>`;
+  $('detailContent').innerHTML=`<button class="close-dialog" aria-label="Cerrar">×</button><div class="detail-portrait">${portrait(entry,true)}</div><p class="detail-label">#${String(entry.id).padStart(4,'0')} · ${esc(entry.form_label)}</p><h2 id="detailTitle" class="detail-title">${esc(entry.name)}</h2><div class="detail-goals">${goals}</div>${pvpDetails}<button class="button button-primary detail-command" data-register="${esc(entry.key)}">Registrar una captura <span aria-hidden="true">＋</span></button><p class="field-note">Las condiciones de una captura se aplican a todas las categorías compatibles. Las formas se contabilizan por separado.</p>`;
   openDialog('detailDialog');
 }
 
@@ -259,7 +262,7 @@ function showMorePvp(){
 }
 
 function pvpCard(league,target){
-  const marked=pvpDone(league,target),record=state.pvpMarks[pvpKey(league,target)];
+  const marked=pvpDone(league,target),record=pvpRecord(league,target);
   const {destination:dest,iv,rank,candidates,level}=target;
   const photo=dest.form==='normal'?`<img src="${esc(dest.dexId<=24?`./assets/sprites/${dest.dexId}.png`:`${HOME}${dest.dexId}.png`)}" alt="Imagen shiny de ${esc(dest.name)}" loading="lazy" width="102" height="102" data-dex="${dest.dexId}" data-normal="true">`:'<span class="pvp-form-image" aria-label="Forma especial, sin imagen verificada">✧</span>';
   return `<article class="pvp-target-card ${marked?'pvp-target-completed':''}">
@@ -275,7 +278,7 @@ function openPvpDialog(league,destinationKey){
   const target=pvpItem(league,destinationKey);if(!target)return;
   if($('detailDialog').open)$('detailDialog').close();
   state.pvpSelected={league,destinationKey};
-  const record=state.pvpMarks[pvpKey(league,target)];
+  const record=pvpRecord(league,target);
   $('pvpDialogTitle').textContent=`${LEAGUE_LABELS[league]} · ${target.destination.name}`;
   $('pvpDialogDescription').textContent=league==='baby'
     ? `Puesto #${target.rank} de Little Cup (500 PC). Registra un ${target.destination.name} shiny directamente, con los IV del CSV, sin evolucionarlo.`
@@ -288,7 +291,8 @@ function openPvpDialog(league,destinationKey){
     : `IV requeridos: ${target.iv.join('/')} · Nivel objetivo tras evolucionar: ${target.level}`;
   for(const [id,i] of [['pvpAtk',0],['pvpDef',1],['pvpHp',2]])$(id).value=record?String(record.iv[i]):'';
   $('pvpConfirm').checked=false;
-  $('pvpRemove').hidden=!record;
+  $('pvpRemove').hidden=!state.pvpMarks[pvpKey(league,target)];
+  if(record?.source==='bot')$('pvpDialogDescription').textContent+=' Captura sincronizada desde Discord. Para deshacerla utiliza el bot.';
   openDialog('pvpDialog');
 }
 function savePvpRecord(event){
@@ -339,14 +343,13 @@ async function sync(manual=false){
   state.fetching=true;state.lastAttempt=Date.now();syncState('Sincronizando…');$('syncButton').disabled=true;
   const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),15000);
   try{
-    const headers={'apikey':config.publishableKey,'Content-Type':'application/json'};
-    if(config.publishableKey.startsWith('eyJ'))headers.Authorization=`Bearer ${config.publishableKey}`;
-    const response=await fetch(`${config.supabaseUrl}/rest/v1/rpc/pokedex_snapshot`,{method:'POST',headers,body:JSON.stringify({p_collection:config.collection}),signal:controller.signal,cache:'no-store'});
-    if(!response.ok)throw new Error(`No se pudo leer la colección (HTTP ${response.status}). Revisa la configuración y el SQL.`);
-    const data=assertSnapshot(await response.json());
-    state.snapshot=data;state.hasData=true;state.lastUpdated=Date.now();state.failures=0;
-    try{localStorage.setItem(cacheKey,JSON.stringify({savedAt:state.lastUpdated,data}));}catch{/* La colección no depende del almacenamiento del navegador. */}
-    syncState('Colección sincronizada','live');notice('');render();
+    const {snapshot,parts,warnings}=await readSnapshots({url:config.supabaseUrl,key:config.publishableKey,collection:config.collection,signal:controller.signal,previous:state.sources});
+    const data=assertSnapshot(snapshot);
+    state.snapshot=data;state.sources=parts;state.hasData=true;state.lastUpdated=Date.now();state.failures=warnings.length?state.failures+1:0;
+    updateBotProgress();
+    try{localStorage.setItem(cacheKey,JSON.stringify({savedAt:state.lastUpdated,data,sources:parts}));}catch{/* La colección no depende del almacenamiento del navegador. */}
+    syncState(warnings.length?'Actualización parcial':'Colección sincronizada',warnings.length?'error':'live');notice(warnings.join(' '));render();
+    if($('detailDialog').open&&state.detailKey)openDetail(state.detailKey);
     $('connectionTitle').textContent='Colección conectada';$('connectionInfo').textContent=`Colección: ${config.collection}. Última lectura: ${dateLabel(new Date(state.lastUpdated),true)}. Se actualiza cada ${config.refreshSeconds} segundos mientras esta página está visible.`;
     if(manual)notify('Colección actualizada.');
   }catch(error){
@@ -356,6 +359,12 @@ async function sync(manual=false){
   }finally{clearTimeout(timeout);state.fetching=false;$('syncButton').disabled=false;schedule();}
 }
 function schedule(){clearTimeout(pollTimer);if(configured&&!document.hidden)pollTimer=setTimeout(()=>sync(),Math.min(600,config.refreshSeconds*2**Math.min(state.failures,3))*1000);}
+
+function updateBotProgress(){
+  const captures=state.snapshot?.bot_progress||[];
+  state.botPvpMarks=botPvpRecords(captures,state.pvpData);
+  state.variantExplorer?.setBotMarks(botVariantRecords(captures));
+}
 
 function download(text,type,name){const url=URL.createObjectURL(new Blob([text],{type}));const link=document.createElement('a');link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);}
 
@@ -418,7 +427,7 @@ async function init(){
     $('goalFilter').insertAdjacentHTML('beforeend',GOALS.map(g=>`<option value="${g.id}">${esc(g.label)}</option>`).join(''));
     $('commandGoal').innerHTML=GOALS.map(g=>`<option value="${g.id}">${esc(g.label)}</option>`).join('');
     $('pokemonNames').innerHTML=state.catalog.map(p=>`<option value="${esc(p.name)}">#${p.id}</option>`).join('');
-    if(configured){try{const cached=JSON.parse(localStorage.getItem(cacheKey));if(cached){state.snapshot=assertSnapshot(cached.data);state.hasData=true;state.lastUpdated=cached.savedAt;syncState('Última copia guardada');}}catch{/* Una caché inválida no se utiliza. */}}
+    if(configured){try{const cached=JSON.parse(localStorage.getItem(cacheKey));if(cached){state.snapshot=assertSnapshot(cached.data);state.sources=cached.sources||{};state.hasData=true;state.lastUpdated=cached.savedAt;updateBotProgress();syncState('Última copia guardada');}}catch{/* Una caché inválida no se utiliza. */}}
     render();await sync();
   }catch(error){notice(error.message+' Abre la web desde GitHub Pages o un servidor HTTP local.');syncState('Catálogo no disponible','error');$('catalog').setAttribute('aria-busy','false');$('resultCount').textContent='Catálogo no disponible';}
 }

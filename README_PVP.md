@@ -1,3 +1,5 @@
+> **Actualización de conexión:** Las capturas del bot ahora marcan objetivos compatibles en todos los dispositivos. Las marcas manuales de la web siguen siendo locales. Consulta [README_CONEXION_BOT.md](README_CONEXION_BOT.md).
+
 # Shinydex — categorías PvP
 
 Esta actualización conserva intactas las ocho categorías previas (`shundo`, `snundo`, tamaños, nivel 1) y mantiene **Superliga** y **Ultraliga** y añade **Baby League**, correspondiente a **Little Cup (500 PC)** del CSV suministrado.

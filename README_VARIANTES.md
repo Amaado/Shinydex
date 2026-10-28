@@ -1,3 +1,5 @@
+> **Actualización de conexión:** La conexión del bot añade el disfraz de Zubat con equivalencia exacta conocida; las formas y otros códigos se conservan en la Pokédex principal. Las marcas manuales y los fondos siguen siendo locales. Consulta [README_CONEXION_BOT.md](README_CONEXION_BOT.md).
+
 # Shinydex — Disfraces, fondos y combinaciones
 
 ## Funcionamiento

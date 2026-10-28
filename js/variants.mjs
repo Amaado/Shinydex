@@ -19,10 +19,11 @@ const alertBox=text=>{el('variantError').hidden=!text;el('variantError').textCon
 export function initVariantExplorer({catalog,collection,supabaseUrl}){
   const species=new Map(catalog.map(c=>[Number(c.id),c]));
   const storeKey=`shinydex:variants:v1:${supabaseUrl}:${collection}`;
-  const data={rows:[],marks:{},limit:24,ready:false,fetching:false,mode:'all',visible:false,sources:'',generated:'',sort:'dex'};
+  const data={rows:[],marks:{},botMarks:{},limit:24,ready:false,fetching:false,mode:'all',visible:false,sources:'',generated:'',sort:'dex'};
   try{const backup=JSON.parse(localStorage.getItem(storeKey)||'{}');if(backup.version===1&&backup.records&&typeof backup.records==='object'&&!Array.isArray(backup.records))data.marks=backup.records;}catch{}
   const persist=()=>{try{localStorage.setItem(storeKey,JSON.stringify({version:1,collection,records:data.marks}));return true;}catch{alertBox('Almacenamiento del navegador bloqueado: exporta una copia de tus registros.');return false;}};
-  const validMark=row=>Boolean(data.marks[row.key]?.date);
+  const record=row=>data.marks[row.key]||data.botMarks[row.key];
+  const validMark=row=>Boolean(record(row)?.date);
   function makeSeedRows(seed){
     return (seed.costumes||[]).filter(x=>Array.isArray(x)&&Number.isInteger(x[0])&&isAvailable(x[3])).map(([dex,name,costume,date,shiny],i)=>({
       key:`c:seed:${dex}:${slug(costume)}`,kind:'costume',dex,name:species.get(dex)?.name||name,costume,background:'',bgType:'',date,shinyConfirmed:shiny===true,shinyStatus:shiny===true?'confirmado':'sin-verificar',picture:null,basePicture:(dex<=24?`./assets/sprites/${dex}.png`:HOME+dex+'.png'),backgroundPicture:null,source:'WikiDex / Pokémon GO',sourceUrl:shiny===true?'https://pokemongo.com/news/halloween-part-1-2026':'https://www.wikidex.net/wiki/Lista_de_Pok%C3%A9mon_de_Pok%C3%A9mon_GO',note:'Imagen genérica si no hay ilustración exacta del disfraz',formId:null
@@ -138,7 +139,7 @@ export function initVariantExplorer({catalog,collection,supabaseUrl}){
       ${row.costume?`<p class="variant-description"><strong>Disfraz:</strong> ${esc(row.costume)}</p>`:''}
       ${row.background?`<p class="variant-description"><strong>Fondo:</strong> ${esc(row.background)} <span class="variant-subtle">(${row.bgType==='location'?'ubicación':'especial'})</span></p>`:''}
       <div class="variant-metadata"><span>${esc(localDate(row.date))}</span><span title="La elegibilidad para un fondo no demuestra que esa combinación pudiera salir shiny">${row.shinyConfirmed?'✦ Shiny documentado':'Shiny no verificado'}</span></div>
-      ${done?`<p class="variant-own-record">✓ Marcado el ${esc(localDate(data.marks[row.key].date))}</p>`:''}
+      ${done?`<p class="variant-own-record">✓ ${record(row)?.source==='bot'?'Desde Discord · ':''}Marcado el ${esc(localDate(record(row).date))}</p>`:''}
       <a href="${esc(row.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="variant-source">Consultar fuente ↗</a>
       <button type="button" class="button ${done?'button-quiet':'button-primary'} variant-mark-button" data-variant-key="${esc(row.key)}">${done?'Modificar registro':'Registrar shiny conseguido'}</button></div>
     </article>`;
@@ -173,10 +174,11 @@ export function initVariantExplorer({catalog,collection,supabaseUrl}){
     data.selected=row;
     el('variantDialogTitle').textContent=`${row.name} · ${label(row)}`;
     el('variantDialogDescription').textContent=[row.costume?`Disfraz: ${row.costume}`:'',row.background?`Fondo: ${row.background}`:''].filter(Boolean).join(' · ');
-    el('variantRecordDate').value=data.marks[row.key]?.date||today();
-    el('variantRecordNote').value=data.marks[row.key]?.note||'';
+    el('variantRecordDate').value=record(row)?.date||today();
+    el('variantRecordNote').value=record(row)?.note||'';
     el('variantRecordConfirm').checked=false;
-    el('variantRecordDelete').hidden=!validMark(row);
+    el('variantRecordDelete').hidden=!data.marks[row.key];
+    if(record(row)?.source==='bot')el('variantDialogDescription').textContent+=' · Captura sincronizada. Para deshacerla utiliza el bot.';
     el('variantDialog').showModal();
   }
   el('variantCatalog').addEventListener('click',e=>{
@@ -222,5 +224,6 @@ export function initVariantExplorer({catalog,collection,supabaseUrl}){
     observer.observe(el('variantMore'));
   }
   refresh();
-  return {show(isVisible){data.visible=isVisible;if(isVisible){data.limit=24;render();}},refresh};
+  return {show(isVisible){data.visible=isVisible;if(isVisible){data.limit=24;render();}},refresh,
+    setBotMarks(marks){data.botMarks=marks;render();}};
 }

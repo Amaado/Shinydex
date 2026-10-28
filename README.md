@@ -1,4 +1,4 @@
-> **Actualización PvP:** consulta [README_PVP.md](README_PVP.md) para las dos nuevas categorías, el método de registro y la limitación actual de sincronización (progreso solo en este navegador).
+> **Conexión con el bot:** consulta [README_CONEXION_BOT.md](README_CONEXION_BOT.md). «Marcar capturado» se sincroniza mediante Supabase, incluidos los objetivos PvP compatibles. El SQL de esta conexión está en `supabase/conectar_bot.sql`.
 
 # Pokédex shiny · publicación segura en GitHub Pages
 
@@ -72,7 +72,7 @@ Para uso local, copia `config.example.js` a `config.js`, rellena solo la URL y l
 
 ## Disfraces y fondos (actualización de octubre de 2026)
 
-Se ha incorporado un catálogo de Pokémon con disfraz, con fondos especiales o de ubicación, y con ambas características simultáneamente. Las fichas y fondos se apoyan en fuentes externas contrastadas. El progreso se registra localmente en el navegador, con exportación/importación JSON. Véase [README_VARIANTES.md](README_VARIANTES.md) para instrucciones, fuentes, alcance y limitaciones. Esta modificación no concede escritura pública en Supabase.
+Se ha incorporado un catálogo de Pokémon con disfraz, con fondos especiales o de ubicación, y con ambas características simultáneamente. Las fichas y fondos se apoyan en fuentes externas contrastadas. Las marcas manuales se registran localmente en el navegador, con exportación/importación JSON. La conexión del bot añade los disfraces con equivalencia exacta conocida; consulta README_CONEXION_BOT.md. Véase [README_VARIANTES.md](README_VARIANTES.md) para instrucciones, fuentes, alcance y limitaciones. Esta modificación no concede escritura pública en Supabase.
 
 ## Baby League
 
